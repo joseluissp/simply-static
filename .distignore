@@ -36,3 +36,4 @@ node_modules/
 *.test.jsx
 /.wp-env.json
 /.wp-env.override.json
+/CLAUDE.md
