@@ -34,3 +34,5 @@ node_modules/
 *.map
 *.test.js
 *.test.jsx
+/.wp-env.json
+/.wp-env.override.json

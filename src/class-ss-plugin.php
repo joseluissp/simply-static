@@ -102,6 +102,9 @@ class Plugin {
 					'filter_task_list'
 				), 10, 2 );
 
+				// Cloudflare Workers delivery (fork addition).
+				Cloudflare::init();
+
 				// Maybe clear local directory.
 				add_action( 'ss_after_setup_task', array( self::$instance, 'maybe_clear_directory' ) );
 
@@ -197,6 +200,9 @@ class Plugin {
 		require_once $path . 'src/tasks/class-ss-wrapup-task.php';
 		require_once $path . 'src/tasks/class-ss-cancel-task.php';
 		require_once $path . 'src/tasks/class-ss-generate-404-task.php';
+		require_once $path . 'src/cloudflare/class-ss-cloudflare-client.php';
+		require_once $path . 'src/cloudflare/class-ss-deploy-cloudflare-task.php';
+		require_once $path . 'src/cloudflare/class-ss-cloudflare.php';
 		require_once $path . 'src/handlers/class-ss-page-handler.php';
 		require_once $path . 'src/class-ss-query.php';
 		require_once $path . 'src/models/class-ss-model.php';
