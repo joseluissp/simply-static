@@ -309,6 +309,13 @@ class Deploy_Cloudflare_Task extends Task {
 
 	public static function mime_type( $path ) {
 		static $overrides = array(
+			// Not from WordPress: wp_check_filetype() drops html/js for requests without the
+			// unfiltered_html capability (WP-Cron auto-publish), which served pages as downloads.
+			'html'        => 'text/html',
+			'htm'         => 'text/html',
+			'js'          => 'text/javascript',
+			'mjs'         => 'text/javascript',
+			'css'         => 'text/css',
 			'woff'        => 'font/woff',
 			'woff2'       => 'font/woff2',
 			'webp'        => 'image/webp',
@@ -327,7 +334,7 @@ class Deploy_Cloudflare_Task extends Task {
 			return $overrides[ $ext ];
 		}
 
-		$type = wp_check_filetype( $path );
+		$type = wp_check_filetype( $path, wp_get_mime_types() );
 
 		return ! empty( $type['type'] ) ? $type['type'] : 'application/octet-stream';
 	}

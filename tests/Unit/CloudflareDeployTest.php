@@ -45,6 +45,15 @@ final class CloudflareDeployTest extends UnitTestCase {
 		);
 	}
 
+	/** WordPress hides html/js from requests without unfiltered_html (WP-Cron), so they must not depend on it. */
+	public function test_web_files_get_their_type_without_asking_wordpress(): void {
+		self::assertSame( 'text/html', Deploy_Cloudflare_Task::mime_type( 'index.html' ) );
+		self::assertSame( 'text/html', Deploy_Cloudflare_Task::mime_type( 'a/b/index.htm' ) );
+		self::assertSame( 'text/javascript', Deploy_Cloudflare_Task::mime_type( 'assets/app.min.js' ) );
+		self::assertSame( 'text/css', Deploy_Cloudflare_Task::mime_type( 'style.CSS' ) );
+		self::assertSame( 'application/json', Deploy_Cloudflare_Task::mime_type( 'ss-search/index.json' ) );
+	}
+
 	public function test_multipart_wraps_every_part_with_the_boundary(): void {
 		list( $boundary, $body ) = Cloudflare_Client::multipart( array(
 			array( 'name' => 'abc', 'type' => 'text/html', 'content' => 'AAA' ),

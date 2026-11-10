@@ -32,6 +32,7 @@ class Cloudflare {
 		self::migrate_enabled_flag();
 		add_filter( 'simplystatic.archive_creation_job.task_list', array( __CLASS__, 'task_list' ), 20, 2 );
 		add_filter( 'ss_get_option_generate_404', array( __CLASS__, 'when_enabled_true' ) );
+		add_filter( 'ss_get_option_crawlers', array( __CLASS__, 'default_crawlers' ) );
 		foreach ( array( 'destination_url_type', 'destination_scheme', 'destination_host', 'relative_path' ) as $name ) {
 			add_filter( 'ss_get_option_' . $name, function ( $value ) use ( $name ) {
 				return self::destination( $name, $value );
@@ -133,6 +134,15 @@ class Cloudflare {
 		$name = trim( substr( sanitize_title( str_replace( '.', '-', $host ) ), 0, 54 ), '-' );
 
 		return '' === $name ? 'simply-static-site' : $name;
+	}
+
+	/**
+	 * Smart Crawl finds pages only through crawlers, and an empty saved list means "none":
+	 * the export would contain just the home page and the deploy would delete the rest of the
+	 * live site. With Cloudflare delivery an empty list falls back to the default crawlers.
+	 */
+	public static function default_crawlers( $value ) {
+		return self::enabled() && is_array( $value ) && ! $value ? null : $value;
 	}
 
 	public static function when_enabled_true( $value ) {

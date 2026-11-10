@@ -310,6 +310,15 @@ namespace Simply_Static\Tests\Unit {
 			self::assertSame( 'update', Cloudflare_Changes::prepare( 'update' ) );
 		}
 
+		public function test_empty_crawler_list_falls_back_to_defaults_only_with_cloudflare(): void {
+			$this->core();
+			self::assertNull( Cloudflare::default_crawlers( array() ), 'an empty list would export only the home page' );
+			self::assertSame( array( 'post_type' ), Cloudflare::default_crawlers( array( 'post_type' ) ) );
+
+			update_option( 'simply-static', array( 'delivery_method' => 'zip' ) );
+			self::assertSame( array(), Cloudflare::default_crawlers( array() ) );
+		}
+
 		/* ---------------------------------------------------------- versions */
 
 		public function test_versions_are_listed_newest_first_with_the_live_one_flagged(): void {
