@@ -158,17 +158,26 @@ class Cloudflare_Client {
 	/**
 	 * Create and deploy the Worker version that serves the uploaded assets.
 	 *
-	 * @param string $jwt    Completion token.
-	 * @param array  $config Asset routing config (html_handling, not_found_handling).
+	 * @param string $jwt     Completion token.
+	 * @param array  $config  Asset routing config (html_handling, not_found_handling).
+	 * @param array  $options Optional: bindings (extra Worker bindings), worker (module source),
+	 *                        run_worker_first (asset paths the Worker answers before the assets).
 	 *
 	 * @return array|\WP_Error
 	 */
-	public function publish( $jwt, array $config ) {
+	public function publish( $jwt, array $config, array $options = array() ) {
+		if ( ! empty( $options['run_worker_first'] ) ) {
+			$config['run_worker_first'] = array_values( $options['run_worker_first'] );
+		}
+
 		$metadata = array(
 			'main_module'        => 'worker.js',
 			'compatibility_date' => gmdate( 'Y-m-d' ),
 			'assets'             => array( 'jwt' => $jwt, 'config' => $config ),
-			'bindings'           => array( array( 'name' => 'ASSETS', 'type' => 'assets' ) ),
+			'bindings'           => array_merge(
+				array( array( 'name' => 'ASSETS', 'type' => 'assets' ) ),
+				isset( $options['bindings'] ) ? $options['bindings'] : array()
+			),
 		);
 
 		list( $boundary, $body ) = self::multipart( array(
@@ -177,7 +186,7 @@ class Cloudflare_Client {
 				'name'     => 'worker.js',
 				'filename' => 'worker.js',
 				'type'     => 'application/javascript+module',
-				'content'  => self::WORKER_MODULE,
+				'content'  => isset( $options['worker'] ) ? $options['worker'] : self::WORKER_MODULE,
 			),
 		) );
 
@@ -187,6 +196,128 @@ class Cloudflare_Client {
 			$body,
 			array( 'Content-Type' => 'multipart/form-data; boundary=' . $boundary )
 		);
+	}
+
+	/**
+	 * Accounts the token can see (used to fill in the account ID automatically).
+	 *
+	 * @return array|\WP_Error List of [ id, name ].
+	 */
+	public function accounts() {
+		$result = $this->request( 'GET', self::API . '/accounts?per_page=50' );
+
+		return is_wp_error( $result ) ? $result : (array) ( isset( $result['result'] ) ? $result['result'] : array() );
+	}
+
+	/** @return string|\WP_Error The account's workers.dev subdomain ('' when it has none yet). */
+	public function account_subdomain() {
+		$sub = $this->call( 'GET', $this->account_url( 'workers/subdomain' ) );
+
+		return is_wp_error( $sub ) ? $sub : (string) ( isset( $sub['result']['subdomain'] ) ? $sub['result']['subdomain'] : '' );
+	}
+
+	/**
+	 * Publish the Worker on its free workers.dev address (the Worker must already exist).
+	 *
+	 * @return string|\WP_Error The public URL.
+	 */
+	public function enable_workers_dev() {
+		$sub = $this->account_subdomain();
+		if ( is_wp_error( $sub ) ) {
+			return $sub;
+		}
+		if ( '' === $sub ) {
+			return new \WP_Error( 'ss_cloudflare_api', __( 'This account has no workers.dev subdomain yet. Create one in the Cloudflare dashboard (Workers & Pages).', 'simply-static' ) );
+		}
+
+		$on = $this->call( 'POST', $this->account_url( 'workers/scripts/' . $this->script . '/subdomain' ), array( 'enabled' => true ) );
+
+		return is_wp_error( $on ) ? $on : 'https://' . rawurldecode( $this->script ) . '.' . $sub . '.workers.dev';
+	}
+
+	/**
+	 * Serve the Worker on one of the account's own domains. DNS and certificate are created by Cloudflare.
+	 * Fails if the hostname already has a CNAME record (remove it first).
+	 *
+	 * @param string $hostname Full hostname, e.g. www.example.com.
+	 *
+	 * @return true|\WP_Error
+	 */
+	public function attach_domain( $hostname ) {
+		$zone = $this->zone_id_for( $hostname );
+		if ( is_wp_error( $zone ) ) {
+			return $zone;
+		}
+
+		$result = $this->call( 'PUT', $this->account_url( 'workers/domains' ), array(
+			'hostname' => $hostname,
+			'service'  => rawurldecode( $this->script ),
+			'zone_id'  => $zone,
+		) );
+
+		return is_wp_error( $result ) ? $result : true;
+	}
+
+	/**
+	 * Zone holding a hostname: tries www.example.co.uk, example.co.uk, co.uk.
+	 *
+	 * @return string|\WP_Error Zone ID.
+	 */
+	public function zone_id_for( $hostname ) {
+		$labels = explode( '.', strtolower( $hostname ) );
+		while ( count( $labels ) >= 2 ) {
+			$result = $this->request( 'GET', self::API . '/zones?name=' . rawurlencode( implode( '.', $labels ) ) );
+			if ( is_wp_error( $result ) ) {
+				return $result;
+			}
+			if ( ! empty( $result['result'][0]['id'] ) ) {
+				return $result['result'][0]['id'];
+			}
+			array_shift( $labels );
+		}
+
+		return new \WP_Error( 'ss_cloudflare_zone', sprintf( 'No Cloudflare zone found for %s in this account (is the domain added to Cloudflare, and does the token have Zone Read?).', $hostname ) );
+	}
+
+	/** @return string|\WP_Error D1 database ID (existing one with that name is reused). */
+	public function ensure_d1( $name ) {
+		$list = $this->request( 'GET', $this->account_url( 'd1/database?name=' . rawurlencode( $name ) ) );
+		if ( is_wp_error( $list ) ) {
+			return $list;
+		}
+		foreach ( (array) $list['result'] as $db ) {
+			if ( isset( $db['name'], $db['uuid'] ) && $db['name'] === $name ) {
+				return $db['uuid'];
+			}
+		}
+
+		$created = $this->call( 'POST', $this->account_url( 'd1/database' ), array( 'name' => $name ) );
+
+		return is_wp_error( $created ) ? $created : $created['result']['uuid'];
+	}
+
+	/** @return array|\WP_Error */
+	public function d1_query( $database_id, $sql ) {
+		return $this->call( 'POST', $this->account_url( 'd1/database/' . rawurlencode( $database_id ) . '/query' ), array( 'sql' => $sql ) );
+	}
+
+	/** @return array|\WP_Error [ sitekey, secret ] */
+	public function create_turnstile( $name, array $domains ) {
+		$result = $this->call( 'POST', $this->account_url( 'challenges/widgets' ), array(
+			'name'    => $name,
+			'mode'    => 'managed',
+			'domains' => array_values( $domains ),
+		) );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return array( 'sitekey' => $result['result']['sitekey'], 'secret' => $result['result']['secret'] );
+	}
+
+	/** JSON request helper. */
+	protected function call( $method, $url, array $data = null ) {
+		return $this->request( $method, $url, null === $data ? null : wp_json_encode( $data ), array( 'Content-Type' => 'application/json' ) );
 	}
 
 	protected function account_url( $path ) {

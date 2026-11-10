@@ -44,12 +44,15 @@ class Deploy_Cloudflare_Task extends Task {
 			return true;
 		}
 
-		$settings = Cloudflare::settings();
-		if ( empty( $settings['account_id'] ) || empty( $settings['token'] ) || empty( $settings['worker_name'] ) ) {
-			return new \WP_Error( 'ss_cloudflare_settings', __( 'Cloudflare account ID, API token and Worker name are required.', 'simply-static' ) );
+		$settings = Cloudflare::ensure_account( Cloudflare::settings() );
+		if ( is_wp_error( $settings ) ) {
+			return $settings;
+		}
+		if ( empty( $settings['token'] ) ) {
+			return new \WP_Error( 'ss_cloudflare_settings', __( 'A Cloudflare API token is required.', 'simply-static' ) );
 		}
 
-		$client = new Cloudflare_Client( $settings['account_id'], $settings['token'], $settings['worker_name'] );
+		$client = Cloudflare::client( $settings );
 		$state  = $this->read_state();
 
 		if ( ! $state ) {
@@ -105,21 +108,37 @@ class Deploy_Cloudflare_Task extends Task {
 		// No batches needed (nothing changed): the session token is the completion token.
 		$completion = ! empty( $state['completion'] ) ? $state['completion'] : $state['jwt'];
 
+		$options = array();
+		if ( $settings['forms'] ) {
+			$bindings = Cloudflare_Forms::provision( $client, $settings, Cloudflare::hosts( $settings ) );
+			if ( is_wp_error( $bindings ) ) {
+				// The site still deploys; only its forms are off.
+				$this->save_status_message( 'Cloudflare forms disabled: ' . $bindings->get_error_message() );
+			} else {
+				$options = array(
+					'bindings'         => $bindings,
+					'worker'           => file_get_contents( __DIR__ . '/worker.js' ),
+					'run_worker_first' => array( '/_ss/*' ),
+				);
+			}
+		}
+
 		$result = $client->publish( $completion, array(
 			'html_handling'      => $settings['html_handling'],
 			'not_found_handling' => $settings['not_found_handling'],
-		) );
+		), $options );
 		$this->cleanup();
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
 
 		$this->save_status_message( sprintf(
-			/* translators: 1: Worker name, 2: files in the site, 3: files uploaded. */
-			__( 'Deployed to Cloudflare Worker "%1$s": %2$d files in the site, %3$d uploaded.', 'simply-static' ),
+			/* translators: 1: Worker name, 2: files in the site, 3: files uploaded, 4: public address. */
+			__( 'Deployed to Cloudflare Worker "%1$s": %2$d files in the site, %3$d uploaded. %4$s', 'simply-static' ),
 			$settings['worker_name'],
 			$state['total'],
-			$state['uploaded']
+			$state['uploaded'],
+			Cloudflare::go_live( $client, $settings )
 		) );
 
 		return true;
@@ -159,6 +178,9 @@ class Deploy_Cloudflare_Task extends Task {
 		if ( is_wp_error( $homepage ) ) {
 			return $homepage;
 		}
+
+		// Headers and redirects travel inside the site like any other file.
+		Cloudflare_Edge_Files::write( $dir );
 
 		$manifest = array();
 		$files    = array();
