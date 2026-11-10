@@ -141,6 +141,11 @@ function HideWP() {
 	};
 
     return (<div className={"inner-settings"}>
+        {options.cloudflare &&
+            <Notice status="info" isDismissible={false}>
+                <p>{__('With Cloudflare, Hide WP is on by default: wp-content, wp-includes and the folders inside are published as assets, lib, media, vendor and theme, and the WordPress markers are removed. Names you type below take priority. Turn it off in Deploy → Hide WordPress.', 'simply-static')}</p>
+            </Notice>
+        }
         <Card>
             <CardHeader>
                 <Flex>
@@ -153,7 +158,7 @@ function HideWP() {
                 <TextControl
                     label={__('wp-content directory', 'simply-static')}
                     help={__('Replace the "wp-content" directory.', 'simply-static')}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     type={"text"}
                     placeholder={"wp-content"}
                     __next40pxDefaultSize
@@ -167,7 +172,7 @@ function HideWP() {
                 <TextControl
                     label={__('wp-includes directory', 'simply-static')}
                     help={__('Replace the "wp-includes" directory.', 'simply-static')}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     type={"text"}
                     placeholder={"wp-includes"}
                     __next40pxDefaultSize
@@ -193,7 +198,7 @@ function HideWP() {
                         </FlexItem>
                         <FlexItem isBlock>
                             <TextControl
-                                disabled={('free' === options.plan || !isPro())}
+                                disabled={false}
                                 type={"text"}
                                 placeholder={"uploads"}
                                 __next40pxDefaultSize
@@ -224,7 +229,7 @@ function HideWP() {
                         </FlexItem>
                         <FlexItem isBlock>
                             <TextControl
-                                disabled={('free' === options.plan || !isPro())}
+                                disabled={false}
                                 type={"text"}
                                 placeholder={"plugins"}
                                 __next40pxDefaultSize
@@ -255,7 +260,7 @@ function HideWP() {
                         </FlexItem>
                         <FlexItem isBlock>
                             <TextControl
-                                disabled={('free' === options.plan || !isPro())}
+                                disabled={false}
                                 type={"text"}
                                 placeholder={"themes"}
                                 __next40pxDefaultSize
@@ -274,7 +279,7 @@ function HideWP() {
                 <InputControl
                     label={__('Theme style name', 'simply-static')}
                     help={__('Replace the style.css filename.', 'simply-static')}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     type={"text"}
                     className={"ss-theme-style-name"}
                     suffix={'.css'}
@@ -291,7 +296,7 @@ function HideWP() {
                 <TextControl
                     label={__('Author URL', 'simply-static')}
                     help={__('Replace the author url.', 'simply-static')}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     type={"text"}
                     placeholder={"author"}
                     __next40pxDefaultSize
@@ -324,7 +329,7 @@ function HideWP() {
                                     label={__('Search for', 'simply-static')}
                                     value={replacement.search}
                                     maxLength={65536}
-                                    disabled={('free' === options.plan || !isPro())}
+                                    disabled={false}
                                     __next40pxDefaultSize
                                     __nextHasNoMarginBottom
                                     onChange={(value) => updateCustomReplacement(index, 'search', value)}
@@ -335,7 +340,7 @@ function HideWP() {
                                     label={__('Replace with', 'simply-static')}
                                     value={replacement.replace}
                                     maxLength={262144}
-                                    disabled={('free' === options.plan || !isPro())}
+                                    disabled={false}
                                     __next40pxDefaultSize
                                     __nextHasNoMarginBottom
                                     onChange={(value) => updateCustomReplacement(index, 'replace', value)}
@@ -347,7 +352,7 @@ function HideWP() {
                                     label={__('Remove replacement', 'simply-static')}
                                     variant="tertiary"
                                     isDestructive
-                                    disabled={('free' === options.plan || !isPro())}
+                                    disabled={false}
                                     onClick={() => updateCustomReplacements(
 										customReplacements.filter((replacementItem, replacementIndex) => (
 											replacementItem && replacementIndex !== index
@@ -361,7 +366,7 @@ function HideWP() {
                 <Button
                     icon="plus-alt2"
                     variant="secondary"
-                    disabled={('free' === options.plan || !isPro() || customReplacements.length >= 100)}
+                    disabled={customReplacements.length >= 100}
                     onClick={() => updateCustomReplacements([
 						...customReplacements,
 						{search: '', replace: ''},
@@ -385,7 +390,7 @@ function HideWP() {
                     label={__('Hide WordPress Version', 'simply-static')}
                     __nextHasNoMarginBottom
                     checked={hideVersion}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     onChange={(value) => {
                         setHideVersion(value);
                         updateSetting('hide_version', value);
@@ -395,7 +400,7 @@ function HideWP() {
                     label={__('Hide WordPress Generator Meta', 'simply-static')}
                     __nextHasNoMarginBottom
                     checked={hideGenerator}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     onChange={(value) => {
                         setHideGenerator(value);
                         updateSetting('hide_generator', value);
@@ -405,7 +410,7 @@ function HideWP() {
                     label={__('Hide DNS Prefetch WordPress link', 'simply-static')}
                     __nextHasNoMarginBottom
                     checked={hidePrefetch}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     onChange={(value) => {
                         setHidePrefetch(value);
                         updateSetting('hide_prefetch', value);
@@ -415,7 +420,7 @@ function HideWP() {
                     label={__('Hide RSD Header', 'simply-static')}
                     __nextHasNoMarginBottom
                     checked={hideRSD}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     onChange={(value) => {
                         setHideRSD(value);
                         updateSetting('hide_rsd', value);
@@ -437,7 +442,7 @@ function HideWP() {
                     label={__('Disable XML-RPC', 'simply-static')}
                     __nextHasNoMarginBottom
                     checked={disableXMLRPC}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     onChange={(value) => {
                         setDisableXMLRPC(value);
                         updateSetting('disable_xmlrpc', value);
@@ -447,7 +452,7 @@ function HideWP() {
                     label={__('Disable Embed Scripts', 'simply-static')}
                     __nextHasNoMarginBottom
                     checked={disableEmbed}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     onChange={(value) => {
                         setDisableEmbed(value);
                         updateSetting('disable_embed', value);
@@ -457,7 +462,7 @@ function HideWP() {
                     label={__('Disable DB Debug in Frontend', 'simply-static')}
                     __nextHasNoMarginBottom
                     checked={disableDbDebug}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     onChange={(value) => {
                         setDisableDbDebug(value);
                         updateSetting('disable_db_debug', value);
@@ -467,7 +472,7 @@ function HideWP() {
                     label={__('Disable WLW Manifest Scripts', 'simply-static')}
                     __nextHasNoMarginBottom
                     checked={disableWLW}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     onChange={(value) => {
                         setDisableWLW(value);
                         updateSetting('disable_wlw_manifest', value);
@@ -477,7 +482,7 @@ function HideWP() {
                     label={__('Disable Emojis', 'simply-static')}
                     __nextHasNoMarginBottom
                     checked={hideEmojis}
-                    disabled={('free' === options.plan || !isPro())}
+                    disabled={false}
                     onChange={(value) => {
                         setHideEmojis(value);
                         updateSetting('hide_emotes', value);

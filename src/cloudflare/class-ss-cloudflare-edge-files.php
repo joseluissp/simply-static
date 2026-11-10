@@ -55,16 +55,19 @@ class Cloudflare_Edge_Files {
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: SAMEORIGIN
   Permissions-Policy: camera=(), microphone=(), geolocation=()
-/wp-content/uploads/*
-  Cache-Control: public, max-age=31536000, immutable
-/wp-content/themes/*
-  Cache-Control: public, max-age=604800
-/wp-content/plugins/*
-  Cache-Control: public, max-age=604800
-/wp-includes/*
-  Cache-Control: public, max-age=604800
 
 TXT;
+
+		// Folders may carry other names (Hide WP): the cache rules must follow them.
+		$cache = array(
+			'/wp-content/uploads/*' => 'public, max-age=31536000, immutable',
+			'/wp-content/themes/*'  => 'public, max-age=604800',
+			'/wp-content/plugins/*' => 'public, max-age=604800',
+			'/wp-includes/*'        => 'public, max-age=604800',
+		);
+		foreach ( $cache as $path => $control ) {
+			$file .= Util::replace_wordpress_path_with_public_path( $path ) . "\n  Cache-Control: " . $control . "\n";
+		}
 
 		return trim( $file . "\n" . trim( (string) $extra ) ) . "\n";
 	}
