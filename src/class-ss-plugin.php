@@ -208,6 +208,7 @@ class Plugin {
 		require_once $path . 'src/cloudflare/class-ss-cloudflare-search.php';
 		require_once $path . 'src/cloudflare/class-ss-cloudflare-changes.php';
 		require_once $path . 'src/cloudflare/class-ss-hide-wp.php';
+		require_once $path . 'src/cloudflare/class-ss-cloudflare-ui.php';
 		require_once $path . 'src/cloudflare/class-ss-cloudflare.php';
 		require_once $path . 'src/handlers/class-ss-page-handler.php';
 		require_once $path . 'src/class-ss-query.php';

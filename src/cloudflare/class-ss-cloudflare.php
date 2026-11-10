@@ -51,6 +51,7 @@ class Cloudflare {
 		Cloudflare_Search::init();
 		Cloudflare_Changes::init();
 		Hide_WP::init();
+		Cloudflare_Ui::init();
 	}
 
 	/** Early builds kept an "enabled" flag here; the delivery method is the single switch now. */

@@ -29,6 +29,7 @@ namespace Simply_Static\Tests\Unit {
 	use Simply_Static\Cloudflare_Edge_Files;
 	use Simply_Static\Cloudflare_Email;
 	use Simply_Static\Cloudflare_Search;
+	use Simply_Static\Cloudflare_Ui;
 	use Simply_Static\Hide_WP;
 	use Simply_Static\Options;
 	use Simply_Static\Tests\Support\UnitTestCase;
@@ -65,6 +66,7 @@ namespace Simply_Static\Tests\Unit {
 			$this->requireSource( 'src/cloudflare/class-ss-cloudflare-search.php' );
 			$this->requireSource( 'src/cloudflare/class-ss-cloudflare-changes.php' );
 			$this->requireSource( 'src/cloudflare/class-ss-hide-wp.php' );
+			$this->requireSource( 'src/cloudflare/class-ss-cloudflare-ui.php' );
 			$this->requireSource( 'src/cloudflare/class-ss-cloudflare.php' );
 		}
 
@@ -317,6 +319,25 @@ namespace Simply_Static\Tests\Unit {
 
 			update_option( 'simply-static', array( 'delivery_method' => 'zip' ) );
 			self::assertSame( array(), Cloudflare::default_crawlers( array() ) );
+		}
+
+		/* ---------------------------------------------------------------- ui */
+
+		public function test_admin_bar_drops_the_upsells_and_adds_nothing_without_cloudflare(): void {
+			update_option( 'simply-static', array( 'delivery_method' => 'zip' ) );
+			$bar = new class {
+				public $removed = array();
+				public $added = array();
+				public function remove_node( $id ) { $this->removed[] = $id; }
+				public function get_node( $id ) { return (object) array( 'id' => $id ); }
+				public function add_node( $node ) { $this->added[] = $node; }
+			};
+
+			Cloudflare_Ui::admin_bar( $bar );
+
+			self::assertSame( array( 'ss-admin-bar-pro-upsell', 'ss-admin-bar-studio-upsell' ), $bar->removed );
+			self::assertSame( array(), $bar->added );
+			self::assertSame( 'off', Cloudflare_Ui::site_state()['state'] );
 		}
 
 		/* ---------------------------------------------------------- versions */
