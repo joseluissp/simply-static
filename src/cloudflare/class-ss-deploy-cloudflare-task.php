@@ -29,6 +29,9 @@ class Deploy_Cloudflare_Task extends Task {
 	 */
 	const MAX_CHUNK_BYTES = 4194304;
 
+	/** Files in the export root that configure Cloudflare instead of being served: file => config key. */
+	const EDGE_FILES = array( '_headers' => '_headers', '_redirects' => '_redirects' );
+
 	protected static $task_name = 'deploy_cloudflare';
 
 	/** Fresh state for every export; a stale upload token must never be reused. */
@@ -123,9 +126,12 @@ class Deploy_Cloudflare_Task extends Task {
 			}
 		}
 
-		$result = $client->publish( $completion, array(
-			'html_handling'      => $settings['html_handling'],
-			'not_found_handling' => $settings['not_found_handling'],
+		$result = $client->publish( $completion, array_merge(
+			array(
+				'html_handling'      => $settings['html_handling'],
+				'not_found_handling' => $settings['not_found_handling'],
+			),
+			$state['edge']
 		), $options );
 		$this->cleanup();
 		if ( is_wp_error( $result ) ) {
@@ -184,6 +190,7 @@ class Deploy_Cloudflare_Task extends Task {
 
 		$manifest = array();
 		$files    = array();
+		$edge     = array();
 		$iterator = new \RecursiveIteratorIterator( new \RecursiveDirectoryIterator( $dir, \FilesystemIterator::SKIP_DOTS ) );
 
 		// ponytail: hashes every file in one call; chunk across perform() calls if huge sites time out.
@@ -193,6 +200,13 @@ class Deploy_Cloudflare_Task extends Task {
 			}
 
 			$relative = ltrim( Util::normalize_slashes( substr( $file->getPathname(), strlen( $dir ) ) ), '/' );
+
+			// Not assets: Cloudflare applies these two when sent inside the asset config (as Wrangler does).
+			if ( isset( self::EDGE_FILES[ $relative ] ) ) {
+				$edge[ self::EDGE_FILES[ $relative ] ] = (string) file_get_contents( $file->getPathname() );
+				continue;
+			}
+
 			if ( $file->getSize() > self::MAX_FILE_SIZE ) {
 				return new \WP_Error( 'ss_cloudflare_file_too_large', sprintf( 'File exceeds Cloudflare 25 MiB asset limit: %s', $relative ) );
 			}
@@ -230,6 +244,7 @@ class Deploy_Cloudflare_Task extends Task {
 			'next'       => 0,
 			'completion' => '',
 			'files'      => $files,
+			'edge'       => $edge,
 			'total'      => count( $manifest ),
 			'uploaded'   => $needed,
 		);
