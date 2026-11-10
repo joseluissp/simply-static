@@ -532,6 +532,7 @@ class Admin_Settings {
                         'version'          => SIMPLY_STATIC_VERSION,
                         'logo'             => apply_filters( 'ss_admin_logo', SIMPLY_STATIC_URL . '/assets/simply-static-logo.svg' ),
                         'plan'             => 'free',
+                        'cloudflare'       => Cloudflare::enabled(),
                         'initial'          => $initial,
                         'home'             => home_url(),
 						'home_path'        => $can_manage_settings ? get_home_path() : '',

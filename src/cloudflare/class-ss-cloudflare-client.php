@@ -174,6 +174,7 @@ class Cloudflare_Client {
 			'main_module'        => 'worker.js',
 			'compatibility_date' => gmdate( 'Y-m-d' ),
 			'assets'             => array( 'jwt' => $jwt, 'config' => $config ),
+			'annotations'        => array( 'workers/message' => isset( $options['message'] ) ? substr( $options['message'], 0, 100 ) : 'Simply Static export' ),
 			'bindings'           => array_merge(
 				array( array( 'name' => 'ASSETS', 'type' => 'assets' ) ),
 				isset( $options['bindings'] ) ? $options['bindings'] : array()
@@ -264,6 +265,17 @@ class Cloudflare_Client {
 	 * @return string|\WP_Error Zone ID.
 	 */
 	public function zone_id_for( $hostname ) {
+		$zone = $this->zone_for( $hostname );
+
+		return is_wp_error( $zone ) ? $zone : $zone['id'];
+	}
+
+	/**
+	 * @param string $hostname Full hostname.
+	 *
+	 * @return array|\WP_Error [ id, name (apex), status (active|pending...), nameservers ]
+	 */
+	public function zone_for( $hostname ) {
 		$labels = explode( '.', strtolower( $hostname ) );
 		while ( count( $labels ) >= 2 ) {
 			$result = $this->request( 'GET', self::API . '/zones?name=' . rawurlencode( implode( '.', $labels ) ) );
@@ -271,12 +283,106 @@ class Cloudflare_Client {
 				return $result;
 			}
 			if ( ! empty( $result['result'][0]['id'] ) ) {
-				return $result['result'][0]['id'];
+				$zone = $result['result'][0];
+
+				return array(
+					'id'          => $zone['id'],
+					'name'        => isset( $zone['name'] ) ? $zone['name'] : implode( '.', $labels ),
+					'status'      => isset( $zone['status'] ) ? $zone['status'] : '',
+					'nameservers' => isset( $zone['name_servers'] ) ? (array) $zone['name_servers'] : array(),
+				);
 			}
 			array_shift( $labels );
 		}
 
 		return new \WP_Error( 'ss_cloudflare_zone', sprintf( 'No Cloudflare zone found for %s in this account (is the domain added to Cloudflare, and does the token have Zone Read?).', $hostname ) );
+	}
+
+	/** Turn the free workers.dev address on or off. */
+	public function set_workers_dev( $enabled ) {
+		return $this->call( 'POST', $this->account_url( 'workers/scripts/' . $this->script . '/subdomain' ), array( 'enabled' => (bool) $enabled ) );
+	}
+
+	/* ------------------------------------------------------------- email */
+
+	/** @return bool|\WP_Error Whether Email Routing is on for the zone. */
+	public function email_routing_enabled( $zone_id ) {
+		$result = $this->request( 'GET', self::API . '/zones/' . rawurlencode( $zone_id ) . '/email/routing' );
+
+		return is_wp_error( $result ) ? $result : ! empty( $result['result']['enabled'] );
+	}
+
+	/** Adds the MX/SPF records Email Routing needs. Refuses (error) if the domain already has other MX records. */
+	public function email_routing_enable( $zone_id ) {
+		return $this->request( 'POST', self::API . '/zones/' . rawurlencode( $zone_id ) . '/email/routing/enable', '{}', array( 'Content-Type' => 'application/json' ) );
+	}
+
+	/**
+	 * Registers an address Cloudflare may deliver to. Cloudflare sends the owner a one-time confirmation email.
+	 *
+	 * @return array|\WP_Error [ email, verified ]
+	 */
+	public function email_destination( $email ) {
+		$list = $this->request( 'GET', $this->account_url( 'email/routing/addresses?per_page=50' ) );
+		if ( is_wp_error( $list ) ) {
+			return $list;
+		}
+		foreach ( (array) ( isset( $list['result'] ) ? $list['result'] : array() ) as $row ) {
+			if ( isset( $row['email'] ) && strtolower( $row['email'] ) === strtolower( $email ) ) {
+				return array( 'email' => $row['email'], 'verified' => ! empty( $row['verified'] ) );
+			}
+		}
+
+		$created = $this->call( 'POST', $this->account_url( 'email/routing/addresses' ), array( 'email' => $email ) );
+
+		return is_wp_error( $created ) ? $created : array( 'email' => $email, 'verified' => ! empty( $created['result']['verified'] ) );
+	}
+
+	/* ---------------------------------------------------------- versions */
+
+	/**
+	 * Recent Worker versions (newest first), flagged with the one serving traffic.
+	 *
+	 * @return array|\WP_Error List of [ id, number, created, message, active ].
+	 */
+	public function versions( $limit = 10 ) {
+		$list = $this->request( 'GET', $this->account_url( 'workers/scripts/' . $this->script . '/versions?deployable=true&per_page=' . (int) $limit ) );
+		if ( is_wp_error( $list ) ) {
+			return $list;
+		}
+		$deployments = $this->request( 'GET', $this->account_url( 'workers/scripts/' . $this->script . '/deployments' ) );
+		$active      = '';
+		if ( ! is_wp_error( $deployments ) ) {
+			$latest = isset( $deployments['result']['deployments'][0] ) ? $deployments['result']['deployments'][0] : array();
+			foreach ( (array) ( isset( $latest['versions'] ) ? $latest['versions'] : array() ) as $version ) {
+				if ( isset( $version['percentage'] ) && 100 === (int) $version['percentage'] ) {
+					$active = $version['version_id'];
+				}
+			}
+		}
+
+		$items = isset( $list['result']['items'] ) ? $list['result']['items'] : ( isset( $list['result'] ) ? $list['result'] : array() );
+		$out   = array();
+		foreach ( array_slice( (array) $items, 0, (int) $limit ) as $item ) {
+			$out[] = array(
+				'id'      => $item['id'],
+				'number'  => isset( $item['number'] ) ? (int) $item['number'] : 0,
+				'created' => isset( $item['metadata']['created_on'] ) ? $item['metadata']['created_on'] : '',
+				'message' => isset( $item['annotations']['workers/message'] ) ? $item['annotations']['workers/message'] : '',
+				'active'  => $item['id'] === $active,
+			);
+		}
+
+		return $out;
+	}
+
+	/** Serve an earlier version again (assets of old versions are kept by Cloudflare). */
+	public function rollback( $version_id ) {
+		return $this->call( 'POST', $this->account_url( 'workers/scripts/' . $this->script . '/deployments' ), array(
+			'strategy'    => 'percentage',
+			'versions'    => array( array( 'percentage' => 100, 'version_id' => $version_id ) ),
+			'annotations' => array( 'workers/message' => 'Rollback from Simply Static' ),
+		) );
 	}
 
 	/** @return string|\WP_Error D1 database ID (existing one with that name is reused). */

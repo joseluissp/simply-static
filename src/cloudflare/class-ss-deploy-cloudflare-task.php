@@ -111,19 +111,23 @@ class Deploy_Cloudflare_Task extends Task {
 		// No batches needed (nothing changed): the session token is the completion token.
 		$completion = ! empty( $state['completion'] ) ? $state['completion'] : $state['jwt'];
 
-		$options = array();
-		if ( $settings['forms'] ) {
-			$bindings = Cloudflare_Forms::provision( $client, $settings, Cloudflare::hosts( $settings ) );
-			if ( is_wp_error( $bindings ) ) {
-				// The site still deploys; only its forms are off.
-				$this->save_status_message( 'Cloudflare forms disabled: ' . $bindings->get_error_message() );
-			} else {
-				$options = array(
-					'bindings'         => $bindings,
-					'worker'           => file_get_contents( __DIR__ . '/worker.js' ),
-					'run_worker_first' => array( '/_ss/*' ),
-				);
-			}
+		$options = array(
+			'message' => sprintf(
+				/* translators: 1: export type, 2: date. */
+				'Simply Static %1$s %2$s',
+				'update' === $this->options->get( 'generate_type' ) ? 'changes' : 'full',
+				gmdate( 'Y-m-d H:i' ) . ' UTC'
+			),
+		);
+
+		$provisioned = Cloudflare::provision( $client, $settings );
+		if ( $provisioned['forms'] ) {
+			$options['bindings']         = $provisioned['bindings'];
+			$options['worker']           = file_get_contents( __DIR__ . '/worker.js' );
+			$options['run_worker_first'] = array( '/_ss/*' );
+		} elseif ( $settings['forms'] ) {
+			// The site still deploys; only its forms are off.
+			$this->save_status_message( 'Cloudflare forms disabled: ' . implode( ' ', $provisioned['notes'] ) );
 		}
 
 		$result = $client->publish( $completion, array_merge(
@@ -137,6 +141,9 @@ class Deploy_Cloudflare_Task extends Task {
 		if ( is_wp_error( $result ) ) {
 			return $result;
 		}
+
+		// From here on the archive is a complete, published site: later exports may build on it.
+		Cloudflare_Changes::record_baseline();
 
 		$this->save_status_message( sprintf(
 			/* translators: 1: Worker name, 2: files in the site, 3: files uploaded, 4: public address. */
@@ -156,14 +163,25 @@ class Deploy_Cloudflare_Task extends Task {
 	 * @return string|null
 	 */
 	protected function partial_export_reason() {
+		// A changes-only export is complete too, because it was built on top of the last full one
+		// (Cloudflare_Changes only allows that while the archive is a known-good site).
 		$partial = get_option( 'simply-static-use-single' )
 			|| get_option( 'simply-static-use-build' )
 			|| get_option( 'simply-static-404-only' )
-			|| 'update' === $this->options->get( 'generate_type' );
+			|| ( 'update' === $this->options->get( 'generate_type' ) && ! $this->update_has_baseline() );
 
 		return $partial
 			? __( 'Cloudflare deploy skipped: it needs a full export, because a partial one would delete the rest of the live site.', 'simply-static' )
 			: null;
+	}
+
+	/** Whether the archive still holds the whole site an update can be layered on. */
+	protected function update_has_baseline() {
+		$base = get_option( Cloudflare_Changes::BASELINE );
+
+		return is_array( $base )
+			&& $this->options->get( 'archive_name' ) === $base['archive_name']
+			&& is_file( $this->options->get_archive_dir() . 'index.html' );
 	}
 
 	/**
@@ -185,8 +203,11 @@ class Deploy_Cloudflare_Task extends Task {
 			return $homepage;
 		}
 
-		// Headers and redirects travel inside the site like any other file.
+		// Headers, redirects and search travel inside the site like any other file.
 		Cloudflare_Edge_Files::write( $dir );
+		if ( Cloudflare_Search::enabled() ) {
+			Cloudflare_Search::write( $dir );
+		}
 
 		$manifest = array();
 		$files    = array();

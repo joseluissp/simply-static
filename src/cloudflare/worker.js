@@ -6,6 +6,7 @@
 //   DB                D1 database with table ss_submissions (form storage)
 //   TURNSTILE_SECRET  secret for Cloudflare Turnstile verification
 //   WEBHOOK_URL       POSTed a JSON copy of every submission
+//   EMAIL, MAIL_TO, MAIL_FROM, MAIL_SITE   emails each submission to the owner (Email Service)
 
 const MAX_BODY = 100 * 1024;
 const MAX_FIELDS = 100;
@@ -110,7 +111,36 @@ async function handleForm( request, env, ctx, url ) {
 		);
 	}
 
+	if ( env.EMAIL && env.MAIL_TO && env.MAIL_FROM ) {
+		ctx.waitUntil( notify( env, page, clean ) );
+	}
+
 	return reply( request, true );
+}
+
+const EMAIL_RE = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
+
+// Mail is a courtesy: the submission is already stored, so failures are only logged.
+async function notify( env, page, fields ) {
+	const text = Object.entries( fields )
+		.map( ( [ key, value ] ) => key + ': ' + ( Array.isArray( value ) ? value.join( ', ' ) : value ) )
+		.join( '\n' );
+	const replyTo = Object.values( fields ).find( ( v ) => typeof v === 'string' && EMAIL_RE.test( v.trim() ) );
+	const message = {
+		from: { email: env.MAIL_FROM, name: env.MAIL_SITE || 'Website' },
+		to: env.MAIL_TO,
+		subject: 'New form message' + ( env.MAIL_SITE ? ' - ' + env.MAIL_SITE : '' ),
+		text: text + '\n\n' + ( page ? 'Page: ' + page : '' ),
+	};
+	if ( replyTo ) {
+		message.replyTo = replyTo.trim();
+	}
+
+	try {
+		await env.EMAIL.send( message );
+	} catch ( e ) {
+		console.log( 'mail failed', e.code, e.message );
+	}
 }
 
 async function verifyTurnstile( secret, token, request ) {

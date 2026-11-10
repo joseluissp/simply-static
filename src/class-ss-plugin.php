@@ -204,6 +204,10 @@ class Plugin {
 		require_once $path . 'src/cloudflare/class-ss-deploy-cloudflare-task.php';
 		require_once $path . 'src/cloudflare/class-ss-cloudflare-edge-files.php';
 		require_once $path . 'src/cloudflare/class-ss-cloudflare-forms.php';
+		require_once $path . 'src/cloudflare/class-ss-cloudflare-email.php';
+		require_once $path . 'src/cloudflare/class-ss-cloudflare-search.php';
+		require_once $path . 'src/cloudflare/class-ss-cloudflare-changes.php';
+		require_once $path . 'src/cloudflare/class-ss-hide-wp.php';
 		require_once $path . 'src/cloudflare/class-ss-cloudflare.php';
 		require_once $path . 'src/handlers/class-ss-page-handler.php';
 		require_once $path . 'src/class-ss-query.php';

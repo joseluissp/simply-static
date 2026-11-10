@@ -22,6 +22,70 @@ const PATH = '/simplystatic/v1/cloudflare';
 // Plain anchor: ExternalLink is a flex item and breaks inline text.
 const Link = ({href, children}) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
 
+/** The last published versions, each one a click away from being live again. */
+function Versions({enabled}) {
+    const [versions, setVersions] = useState(null);
+    const [busy, setBusy] = useState('');
+    const [message, setMessage] = useState(null);
+
+    const load = () => apiFetch({path: PATH + '/versions'}).then((rows) => setVersions(Array.isArray(rows) ? rows : [])).catch(() => setVersions([]));
+
+    useEffect(() => {
+        if (enabled) {
+            load();
+        }
+    }, [enabled]);
+
+    if (!enabled || !versions || !versions.length) {
+        return null;
+    }
+
+    const restore = (version) => {
+        if (!window.confirm(__('Make this version the live site again? Newer content stays in WordPress and will be published on your next export.', 'simply-static'))) {
+            return;
+        }
+        setBusy(version.id);
+        setMessage(null);
+        apiFetch({path: PATH + '/rollback', method: 'POST', data: {version: version.id}})
+            .then(() => {
+                setMessage({status: 'success', text: __('Done. The selected version is live.', 'simply-static')});
+                return load();
+            })
+            .catch((e) => setMessage({status: 'error', text: e?.message || __('Something went wrong.', 'simply-static')}))
+            .finally(() => setBusy(''));
+    };
+
+    return (
+        <>
+            <Spacer margin={5}/>
+            <Card>
+                <CardHeader><b>{__('Published versions', 'simply-static')}</b></CardHeader>
+                <CardBody>
+                    {message && <Notice status={message.status} isDismissible={false}><p>{message.text}</p></Notice>}
+                    <table className="widefat striped">
+                        <tbody>
+                        {versions.map((v) => (
+                            <tr key={v.id}>
+                                <td>#{v.number}</td>
+                                <td>{v.created ? new Date(v.created).toLocaleString() : ''}</td>
+                                <td>{v.message}</td>
+                                <td style={{textAlign: 'right'}}>
+                                    {v.active
+                                        ? <b>{__('Live', 'simply-static')}</b>
+                                        : <Button variant="secondary" isBusy={busy === v.id} disabled={!!busy} onClick={() => restore(v)}>
+                                            {__('Go back to this version', 'simply-static')}
+                                        </Button>}
+                                </td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                </CardBody>
+            </Card>
+        </>
+    );
+}
+
 /**
  * Cloudflare delivery settings. Lives in its own option and REST route (not the main
  * settings object), so it saves with its own button.
@@ -119,18 +183,38 @@ export default function CloudflareSettings() {
                         }
                     />
                     <TextControl
-                        label={__('Custom domain (optional)', 'simply-static')}
+                        label={__('Final domain (optional)', 'simply-static')}
                         value={form.domain || ''}
                         placeholder="www.example.com"
                         onChange={set('domain')}
-                        help={__('The domain must already be on Cloudflare and must not have a CNAME record for this host.', 'simply-static')}
+                        help={__('Leave it empty while you test: the site lives at its workers.dev address. When the domain is in your Cloudflare account and its nameservers point to Cloudflare, enter it here and save: the site is attached to the domain and published again with the final addresses. Until then your current site keeps serving the domain.', 'simply-static')}
                     />
+                    {!!form.domain &&
+                        <ToggleControl
+                            label={__('Turn off the workers.dev address once the domain is live', 'simply-static')}
+                            help={__('Avoids having the same site on two addresses.', 'simply-static')}
+                            checked={!!form.disable_workers_dev}
+                            onChange={set('disable_workers_dev')}
+                        />
+                    }
                     <ToggleControl
                         label={__('Auto-publish', 'simply-static')}
-                        help={__('Export and deploy about a minute after content is published, updated or removed.', 'simply-static')}
+                        help={__('Publish about a minute after content is published, updated or removed.', 'simply-static')}
                         checked={!!form.auto_publish}
                         onChange={set('auto_publish')}
                     />
+                    {!!form.auto_publish &&
+                        <SelectControl
+                            label={__('What auto-publish exports', 'simply-static')}
+                            value={form.autopublish_type || 'update'}
+                            options={[
+                                {label: __('Changes only (fast)', 'simply-static'), value: 'update'},
+                                {label: __('Full site', 'simply-static'), value: 'export'},
+                            ]}
+                            onChange={set('autopublish_type')}
+                            help={__('Changes only falls back to a full export by itself when something that affects every page changes (menus, theme, plugins, domain, Hide WP).', 'simply-static')}
+                        />
+                    }
                     <ToggleControl
                         label={__('Forms', 'simply-static')}
                         help={__('Make WordPress forms work on the static site. Submissions are stored in Cloudflare D1 and protected by Turnstile.', 'simply-static')}
@@ -138,14 +222,44 @@ export default function CloudflareSettings() {
                         onChange={set('forms')}
                     />
                     {!!form.forms &&
-                        <TextControl
-                            type="url"
-                            label={__('Forms webhook (optional)', 'simply-static')}
-                            value={form.webhook_url || ''}
-                            onChange={set('webhook_url')}
-                            help={__('Every submission is also sent here as JSON (Zapier, Make, n8n…).', 'simply-static')}
-                        />
+                        <>
+                            <ToggleControl
+                                label={__('Email me every form message', 'simply-static')}
+                                help={data.email && data.email.note}
+                                checked={!!form.notify}
+                                onChange={set('notify')}
+                            />
+                            {!!form.notify &&
+                                <TextControl
+                                    type="email"
+                                    label={__('Send messages to', 'simply-static')}
+                                    value={form.notify_email || ''}
+                                    placeholder={data.email && data.email.to ? data.email.to : ''}
+                                    onChange={set('notify_email')}
+                                    help={__('Empty means the WordPress admin email.', 'simply-static')}
+                                />
+                            }
+                            <TextControl
+                                type="url"
+                                label={__('Forms webhook (optional)', 'simply-static')}
+                                value={form.webhook_url || ''}
+                                onChange={set('webhook_url')}
+                                help={__('Every submission is also sent here as JSON (Zapier, Make, n8n…).', 'simply-static')}
+                            />
+                        </>
                     }
+                    <ToggleControl
+                        label={__('Search', 'simply-static')}
+                        help={__('Adds a search page and points the theme’s search boxes to it. It works in the browser: no server needed.', 'simply-static')}
+                        checked={!!form.search}
+                        onChange={set('search')}
+                    />
+                    <ToggleControl
+                        label={__('Hide WordPress', 'simply-static')}
+                        help={__('Renames wp-content and wp-includes in the published site and removes the generator, version and other WordPress markers. Fine-tune it in the Hide WP page.', 'simply-static')}
+                        checked={!!form.hide_wp}
+                        onChange={set('hide_wp')}
+                    />
 
                     <details>
                         <summary>{__('Advanced', 'simply-static')}</summary>
@@ -213,6 +327,8 @@ export default function CloudflareSettings() {
                     </Flex>
                 </CardBody>
             </Card>
+
+            <Versions enabled={data.token_set && !!data.deployed_at}/>
 
             {submissions.length > 0 &&
                 <>

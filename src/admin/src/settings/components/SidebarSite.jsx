@@ -172,7 +172,7 @@ function SidebarSite( props = null ) {
                 // Auto-select "Export Changes" when there are unpushed changes and Pro is available.
                 // A failed run has no trustworthy deployment baseline, so keep Full Site
                 // selected for the retry even when WordPress reports newer content.
-                if (total > 0 && !lastExportFailed && 'pro' === options.plan && isPro()) {
+                if (total > 0 && !lastExportFailed && (('pro' === options.plan && isPro()) || options.cloudflare)) {
                     setSelectedExportType('update');
                 } else {
                     setSelectedExportType('export');
@@ -432,7 +432,7 @@ function SidebarSite( props = null ) {
                 }}
             >
                 <option value="export">{__('Full Site', 'simply-static')}</option>
-                {'pro' === options.plan && isPro() ?
+                {(('pro' === options.plan && isPro()) || options.cloudflare) ?
                     <option value="update">{__('Changes Only', 'simply-static')}</option>
                     :
                     <option disabled value="update">{__('Changes Only', 'simply-static')}</option>

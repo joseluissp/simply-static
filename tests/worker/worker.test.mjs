@@ -87,3 +87,64 @@ test( 'plain browser submit is redirected back (303)', async () => {
 	assert.equal( res.status, 303 );
 	assert.equal( res.headers.get( 'location' ), 'https://site.test/contacto/' );
 } );
+
+function mailCtx() {
+	const pending = [];
+
+	return { pending, waitUntil: ( p ) => pending.push( p ) };
+}
+
+const MAIL = { MAIL_TO: 'owner@example.org', MAIL_FROM: 'noreply@example.com', MAIL_SITE: 'Mi sitio' };
+
+test( 'mail: a stored submission is emailed with reply-to from the visitor address', async () => {
+	const sent = [];
+	const c = mailCtx();
+	const env = { DB: fakeDb(), EMAIL: { send: async ( m ) => sent.push( m ) }, ...MAIL };
+	await worker.fetch( post( new URLSearchParams( { name: 'Ana', email: ' ana@mail.com ', msg: 'hola' } ), { referer: 'https://site.test/contacto/' } ), env, c );
+	await Promise.all( c.pending );
+
+	assert.equal( sent.length, 1 );
+	assert.equal( sent[ 0 ].to, 'owner@example.org' );
+	assert.deepEqual( sent[ 0 ].from, { email: 'noreply@example.com', name: 'Mi sitio' } );
+	assert.equal( sent[ 0 ].replyTo, 'ana@mail.com' );
+	assert.equal( sent[ 0 ].subject, 'New form message - Mi sitio' );
+	assert.match( sent[ 0 ].text, /name: Ana/ );
+	assert.match( sent[ 0 ].text, /Page: https:\/\/site\.test\/contacto\// );
+} );
+
+test( 'mail: no reply-to when no field looks like an email', async () => {
+	const sent = [];
+	const c = mailCtx();
+	const env = { DB: fakeDb(), EMAIL: { send: async ( m ) => sent.push( m ) }, ...MAIL };
+	await worker.fetch( post( new URLSearchParams( { msg: 'hola' } ) ), env, c );
+	await Promise.all( c.pending );
+
+	assert.equal( sent.length, 1 );
+	assert.equal( 'replyTo' in sent[ 0 ], false );
+} );
+
+test( 'mail: nothing is sent without the email bindings, honeypot or captcha failures', async () => {
+	const sent = [];
+	const EMAIL = { send: async ( m ) => sent.push( m ) };
+
+	let c = mailCtx();
+	await worker.fetch( post( new URLSearchParams( { msg: 'x' } ) ), { DB: fakeDb(), EMAIL }, c );
+	c = mailCtx();
+	await worker.fetch( post( new URLSearchParams( { _ss_hp: 'bot' } ) ), { DB: fakeDb(), EMAIL, ...MAIL }, c );
+	c = mailCtx();
+	await worker.fetch( post( new URLSearchParams( { msg: 'x' } ) ), { DB: fakeDb(), EMAIL, ...MAIL, TURNSTILE_SECRET: 's' }, c );
+	await Promise.all( c.pending );
+
+	assert.equal( sent.length, 0 );
+} );
+
+test( 'mail: a failing send never breaks the submission', async () => {
+	const c = mailCtx();
+	const DB = fakeDb();
+	const env = { DB, EMAIL: { send: async () => { throw Object.assign( new Error( 'boom' ), { code: 'E_X' } ); } }, ...MAIL };
+	const res = await worker.fetch( post( new URLSearchParams( { msg: 'hola' } ) ), env, c );
+	await Promise.all( c.pending );
+
+	assert.deepEqual( await res.json(), { ok: true } );
+	assert.equal( DB.rows.length, 1 );
+} );

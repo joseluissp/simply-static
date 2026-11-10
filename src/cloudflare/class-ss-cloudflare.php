@@ -32,7 +32,6 @@ class Cloudflare {
 		self::migrate_enabled_flag();
 		add_filter( 'simplystatic.archive_creation_job.task_list', array( __CLASS__, 'task_list' ), 20, 2 );
 		add_filter( 'ss_get_option_generate_404', array( __CLASS__, 'when_enabled_true' ) );
-		add_filter( 'ss_get_option_generate_type', array( __CLASS__, 'full_export' ) );
 		foreach ( array( 'destination_url_type', 'destination_scheme', 'destination_host', 'relative_path' ) as $name ) {
 			add_filter( 'ss_get_option_' . $name, function ( $value ) use ( $name ) {
 				return self::destination( $name, $value );
@@ -48,6 +47,9 @@ class Cloudflare {
 		add_action( self::HOOK, array( __CLASS__, 'autopublish' ) );
 
 		Cloudflare_Forms::init();
+		Cloudflare_Search::init();
+		Cloudflare_Changes::init();
+		Hide_WP::init();
 	}
 
 	/** Early builds kept an "enabled" flag here; the delivery method is the single switch now. */
@@ -82,7 +84,20 @@ class Cloudflare {
 			'webhook_url'        => '',
 			'extra_headers'      => '',
 			'extra_redirects'    => '',
+			'notify'             => true,
+			'notify_email'       => '',
+			'search'             => true,
+			'hide_wp'            => true,
+			'autopublish_type'   => 'update',
+			'disable_workers_dev' => false,
 		) );
+
+		// The Worker's name is its identity: once deployed, a moved or cloned site (local copy, new
+		// address) must keep updating the same one instead of deriving a new name from its host.
+		$status = get_option( self::STATUS, array() );
+		if ( '' === $settings['worker_name'] && ! empty( $status['worker'] ) ) {
+			$settings['worker_name'] = $status['worker'];
+		}
 
 		foreach ( array( 'account_id' => 'SIMPLY_STATIC_CF_ACCOUNT_ID', 'token' => 'SIMPLY_STATIC_CF_API_TOKEN', 'worker_name' => 'SIMPLY_STATIC_CF_WORKER' ) as $key => $constant ) {
 			if ( defined( $constant ) ) {
@@ -122,11 +137,6 @@ class Cloudflare {
 
 	public static function when_enabled_true( $value ) {
 		return self::enabled() ? true : $value;
-	}
-
-	/** The deploy replaces the WHOLE site, so a "changes only" export must never be the one that runs. */
-	public static function full_export( $value ) {
-		return self::enabled() ? 'export' : $value;
 	}
 
 	/**
@@ -237,20 +247,70 @@ class Cloudflare {
 			$notes[] = __( 'No workers.dev subdomain on this account yet: set a custom domain or create the subdomain in Cloudflare (Workers & Pages).', 'simply-static' );
 		}
 		update_option( self::STATUS, $status, false );
-		$hosts = self::hosts( $s );
 
-		if ( $s['forms'] ) {
-			$bindings = Cloudflare_Forms::provision( $client, $s, $hosts );
-			if ( is_wp_error( $bindings ) ) {
-				$notes[] = sprintf( 'Forms: %s', $bindings->get_error_message() );
-			} else {
-				$notes[] = __( 'Forms are ready (D1 storage + Turnstile).', 'simply-static' );
-				$state   = get_option( Cloudflare_Forms::OPTION, array() );
-				$notes   = array_merge( $notes, (array) ( $state['warnings'] ?? array() ) );
-			}
+		$provisioned = self::provision( $client, $s );
+		$notes       = array_merge( $notes, $provisioned['notes'] );
+
+		// A domain that is already in the account can be served right away; no export needed to see the result.
+		if ( $s['domain'] ) {
+			$zone = $client->zone_for( $s['domain'] );
+			$notes[] = is_wp_error( $zone )
+				? sprintf( /* translators: %s: domain. */ __( '%s is not in this Cloudflare account yet: add it, point its nameservers to Cloudflare, and the next publish attaches it.', 'simply-static' ), $s['domain'] )
+				: ( 'active' === $zone['status']
+					? sprintf( /* translators: %s: domain. */ __( '%s is ready to be attached on the next publish.', 'simply-static' ), $s['domain'] )
+					: sprintf( /* translators: 1: domain, 2: nameservers. */ __( '%1$s is waiting for its nameservers to change to: %2$s', 'simply-static' ), $s['domain'], implode( ', ', $zone['nameservers'] ) ) );
 		}
 
 		return $notes;
+	}
+
+	/**
+	 * Everything the Worker's bindings need besides the assets: forms storage + Turnstile and owner email.
+	 * Existing resources are reused; problems become notes, they never stop a deploy.
+	 *
+	 * @return array [ bindings, notes, forms (bool: forms usable) ]
+	 */
+	public static function provision( Cloudflare_Client $client, array $s ) {
+		$out = array( 'bindings' => array(), 'notes' => array(), 'forms' => false );
+		if ( ! $s['forms'] ) {
+			return $out;
+		}
+
+		$bindings = Cloudflare_Forms::provision( $client, $s, self::hosts( $s ) );
+		if ( is_wp_error( $bindings ) ) {
+			$out['notes'][] = sprintf( 'Forms: %s', $bindings->get_error_message() );
+
+			return $out;
+		}
+
+		$state            = get_option( Cloudflare_Forms::OPTION, array() );
+		$out['forms']     = true;
+		$out['notes'][]   = __( 'Forms are ready (D1 storage + Turnstile).', 'simply-static' );
+		$out['notes']     = array_merge( $out['notes'], (array) ( isset( $state['warnings'] ) ? $state['warnings'] : array() ) );
+		$out['bindings']  = array_merge( $bindings, Cloudflare_Email::provision( $client, $s ) );
+		$out['notes'][]   = self::email_note( Cloudflare_Email::status() );
+
+		return $out;
+	}
+
+	protected static function email_note( array $mail ) {
+		switch ( $mail['state'] ) {
+			case 'ready':
+				/* translators: %s: email address. */
+				return sprintf( __( 'Form messages are emailed to %s.', 'simply-static' ), $mail['to'] );
+			case 'pending_verification':
+				/* translators: %s: email address. */
+				return sprintf( __( 'Email: Cloudflare sent a confirmation message to %s. Click its link once and form messages will start arriving.', 'simply-static' ), $mail['to'] );
+			case 'needs_domain':
+				return __( 'Email notifications turn on by themselves once the site has its own domain in your Cloudflare account. Until then messages are kept in the Submissions list.', 'simply-static' );
+			case 'zone_pending':
+				return __( 'Email notifications will turn on once the domain is active in Cloudflare (nameservers changed).', 'simply-static' );
+			case 'off':
+				return __( 'Email notifications are off.', 'simply-static' );
+			default:
+				/* translators: %s: reason. */
+				return sprintf( __( 'Email notifications could not be set up: %s', 'simply-static' ), $mail['detail'] );
+		}
 	}
 
 	/** Public hostnames of the site: custom domain first, then the workers.dev one. */
@@ -275,6 +335,14 @@ class Cloudflare {
 		} else {
 			$status['url'] = $url;
 			$parts[]       = $url;
+		}
+
+		// Once the real domain is serving, the preview address can go (it would be a duplicate of the site).
+		$live = $s['domain'] && ! empty( $status['domain_ok'] ) && $status['domain_ok'] === $s['domain'];
+		if ( $live && ! empty( $s['disable_workers_dev'] ) && ! is_wp_error( $url ) ) {
+			$client->set_workers_dev( false );
+			unset( $status['url'] );
+			$parts = array();
 		}
 
 		if ( $s['domain'] && ( empty( $status['domain_ok'] ) || $status['domain_ok'] !== $s['domain'] ) ) {
@@ -318,7 +386,10 @@ class Cloudflare {
 	}
 
 	public static function autopublish() {
-		if ( Plugin::instance()->run_static_export( 0, 'export' ) ) {
+		$s    = self::settings();
+		$type = Cloudflare_Changes::prepare( 'update' === $s['autopublish_type'] ? 'update' : 'export' );
+
+		if ( Plugin::instance()->run_static_export( 0, $type ) ) {
 			delete_transient( 'ss_cloudflare_retries' );
 
 			return;
@@ -343,6 +414,9 @@ class Cloudflare {
 			array( 'key' => 'account_settings', 'type' => 'edit' ),
 			array( 'key' => 'zone', 'type' => 'read' ),
 			array( 'key' => 'turnstile', 'type' => 'edit' ),
+			// Form notifications by email. ponytail: key names follow Cloudflare's naming; the dashboard lists any it does not recognise.
+			array( 'key' => 'email_routing_addresses', 'type' => 'edit' ),
+			array( 'key' => 'email_routing_rules', 'type' => 'edit' ),
 		);
 
 		return 'https://dash.cloudflare.com/?to=/:account/api-tokens&permissionGroupKeys=' . rawurlencode( wp_json_encode( $permissions ) ) . '&name=' . rawurlencode( 'Simply Static - ' . self::default_worker_name() );
@@ -358,6 +432,12 @@ class Cloudflare {
 		) );
 		register_rest_route( 'simplystatic/v1', '/cloudflare/submissions', array(
 			'methods' => 'GET', 'callback' => array( __CLASS__, 'rest_submissions' ), 'permission_callback' => $can,
+		) );
+		register_rest_route( 'simplystatic/v1', '/cloudflare/versions', array(
+			'methods' => 'GET', 'callback' => array( __CLASS__, 'rest_versions' ), 'permission_callback' => $can,
+		) );
+		register_rest_route( 'simplystatic/v1', '/cloudflare/rollback', array(
+			'methods' => 'POST', 'callback' => array( __CLASS__, 'rest_rollback' ), 'permission_callback' => $can,
 		) );
 	}
 
@@ -392,7 +472,41 @@ class Cloudflare {
 			'dashboard'    => $s['account_id'] ? 'https://dash.cloudflare.com/' . rawurlencode( $s['account_id'] ) . '/workers/services/view/' . rawurlencode( $worker ) . '/production' : '',
 			'forms_ready'  => ! empty( $forms['d1'] ),
 			'warnings'     => isset( $forms['warnings'] ) ? (array) $forms['warnings'] : array(),
+			'email'        => array_merge( Cloudflare_Email::status(), array( 'note' => self::email_note( Cloudflare_Email::status() ) ) ),
+			'can_update'   => Cloudflare_Changes::can_update(),
 		);
+	}
+
+	/** Last Worker versions, newest first, for the rollback list. */
+	public static function rest_versions() {
+		$s = self::settings();
+		if ( ! $s['token'] || ! $s['account_id'] ) {
+			return rest_ensure_response( array() );
+		}
+		$status = get_option( self::STATUS, array() );
+		$client = new Cloudflare_Client( $s['account_id'], $s['token'], ! empty( $status['worker'] ) ? $status['worker'] : $s['worker_name'] );
+		$list   = $client->versions( 10 );
+
+		return is_wp_error( $list ) ? $list : rest_ensure_response( $list );
+	}
+
+	/** Serve an earlier version again. The next export publishes on top of the current archive, so the archive is also invalidated. */
+	public static function rest_rollback( \WP_REST_Request $request ) {
+		$version = sanitize_text_field( (string) $request->get_param( 'version' ) );
+		$s       = self::settings();
+		if ( ! preg_match( '/^[a-f0-9-]{8,64}$/i', $version ) || ! $s['token'] ) {
+			return new \WP_Error( 'ss_cloudflare_rollback', __( 'Invalid version.', 'simply-static' ), array( 'status' => 400 ) );
+		}
+		$status = get_option( self::STATUS, array() );
+		$client = new Cloudflare_Client( $s['account_id'], $s['token'], ! empty( $status['worker'] ) ? $status['worker'] : $s['worker_name'] );
+		$result = $client->rollback( $version );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+		// What is online is no longer what the archive holds: the next publish has to rebuild everything.
+		Cloudflare_Changes::need_full();
+
+		return rest_ensure_response( array( 'ok' => true ) );
 	}
 
 	public static function rest_get() {
@@ -425,7 +539,18 @@ class Cloudflare {
 			'webhook_url'        => esc_url_raw( isset( $in['webhook_url'] ) ? (string) $in['webhook_url'] : '' ),
 			'extra_headers'      => $text( 'extra_headers' ),
 			'extra_redirects'    => $text( 'extra_redirects' ),
+			'notify'             => ! empty( $in['notify'] ),
+			'notify_email'       => sanitize_email( isset( $in['notify_email'] ) ? (string) $in['notify_email'] : '' ),
+			'search'             => ! empty( $in['search'] ),
+			'hide_wp'            => ! empty( $in['hide_wp'] ),
+			'autopublish_type'   => $pick( 'autopublish_type', array( 'update', 'export' ), 'update' ),
+			'disable_workers_dev' => ! empty( $in['disable_workers_dev'] ),
 		), false );
+
+		// Pointing the site at its final domain changes every link: publish again (as a full export, see Cloudflare_Changes).
+		if ( ( isset( $old['domain'] ) ? $old['domain'] : '' ) !== $host ) {
+			self::queue_publish();
+		}
 
 		// Picking Cloudflare in the form is choosing it as the delivery method.
 		$core = get_option( 'simply-static', array() );
