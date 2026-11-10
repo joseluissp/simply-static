@@ -130,6 +130,9 @@ class Deploy_Cloudflare_Task extends Task {
 			$this->save_status_message( 'Cloudflare forms disabled: ' . implode( ' ', $provisioned['notes'] ) );
 		}
 
+		// What serves traffic now, in case the new version turns out broken.
+		$previous = $this->active_version( $client );
+
 		$result = $client->publish( $completion, array_merge(
 			array(
 				'html_handling'      => $settings['html_handling'],
@@ -142,19 +145,97 @@ class Deploy_Cloudflare_Task extends Task {
 			return $result;
 		}
 
+		$live    = Cloudflare::go_live( $client, $settings );
+		$notes   = Cloudflare_Verify::preflight( $state['total'], isset( $state['edge']['_headers'] ) ? $state['edge']['_headers'] : '' );
+		$problem = $this->verify( $client, $state, $previous, $notes );
+		if ( is_wp_error( $problem ) ) {
+			return $problem;
+		}
+
 		// From here on the archive is a complete, published site: later exports may build on it.
 		Cloudflare_Changes::record_baseline();
 
-		$this->save_status_message( sprintf(
+		$this->save_status_message( trim( sprintf(
 			/* translators: 1: Worker name, 2: files in the site, 3: files uploaded, 4: public address. */
 			__( 'Deployed to Cloudflare Worker "%1$s": %2$d files in the site, %3$d uploaded. %4$s', 'simply-static' ),
 			$settings['worker_name'],
 			$state['total'],
 			$state['uploaded'],
-			Cloudflare::go_live( $client, $settings )
-		) );
+			$live
+		) . ' ' . implode( ' ', $notes ) ) );
 
 		return true;
+	}
+
+	/** Version serving 100% of the traffic, '' when there is none (first deploy) or it cannot be read. */
+	protected function active_version( Cloudflare_Client $client ) {
+		$versions = $client->versions( 5 );
+		if ( is_wp_error( $versions ) ) {
+			return '';
+		}
+		foreach ( $versions as $version ) {
+			if ( $version['active'] ) {
+				return $version['id'];
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Request the live site; on proof it is broken, serve the previous version again.
+	 *
+	 * @param Cloudflare_Client $client   API client.
+	 * @param array             $state    Deploy state (files of this export).
+	 * @param string            $previous Version that was live before this deploy.
+	 * @param array             $notes    Warnings, appended to when the check is doubtful.
+	 *
+	 * @return \WP_Error|null Error when the deploy was reverted (or could not be).
+	 */
+	protected function verify( Cloudflare_Client $client, array $state, $previous, array &$notes ) {
+		$base = Cloudflare_Ui::live_url();
+		if ( ! Cloudflare_Verify::enabled() || ! $base ) {
+			return null;
+		}
+
+		$uploaded = array();
+		foreach ( $state['buckets'] as $bucket ) {
+			foreach ( $bucket as $hash ) {
+				if ( isset( $state['files'][ $hash ] ) ) {
+					$uploaded[ $state['files'][ $hash ]['path'] ] = $state['files'][ $hash ]['type'];
+				}
+			}
+		}
+
+		$result = Cloudflare_Verify::check( $base, Cloudflare_Verify::targets( $uploaded ) );
+		if ( 'ok' === $result['state'] ) {
+			return null;
+		}
+		$problems = implode( '; ', $result['problems'] );
+
+		if ( 'warn' === $result['state'] ) {
+			$notes[] = 'Could not confirm the live site (' . $problems . ').';
+
+			return null;
+		}
+
+		// The archive no longer matches what is online: the next export must rebuild everything.
+		Cloudflare_Changes::need_full();
+
+		$reverted = $previous ? $client->rollback( $previous ) : null;
+		if ( $previous && ! is_wp_error( $reverted ) ) {
+			return new \WP_Error( 'ss_cloudflare_verify', sprintf(
+				/* translators: %s: what was wrong. */
+				__( 'The published version failed the check (%s), so the previous version is live again.', 'simply-static' ),
+				$problems
+			) );
+		}
+
+		return new \WP_Error( 'ss_cloudflare_verify', sprintf(
+			/* translators: %s: what was wrong. */
+			__( 'The published version failed the check (%s) and could not be reverted. Fix it and export again, or roll back from the Cloudflare settings.', 'simply-static' ),
+			$problems
+		) );
 	}
 
 	/**

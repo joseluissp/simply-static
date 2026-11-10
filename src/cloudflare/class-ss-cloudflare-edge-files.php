@@ -36,9 +36,8 @@ class Cloudflare_Edge_Files {
 		$rules = array_merge( self::parse_rules( $settings['extra_redirects'] ), self::redirection_plugin_rules() );
 		$rules = apply_filters( 'ss_cloudflare_redirects', $rules );
 		$file  = self::redirects_file( $rules );
-		if ( $file ) {
-			self::merge( $dir . '_redirects', $file );
-		}
+		// Even when empty: a changes-only export keeps the archive, so last run's block must go.
+		self::merge( $dir . '_redirects', $file );
 
 		return count( self::parse_rules( $file ) );
 	}
@@ -152,6 +151,16 @@ TXT;
 			$existing = substr( $existing, 0, $at );
 		}
 
-		file_put_contents( $path, ( trim( $existing ) ? rtrim( $existing ) . "\n\n" : '' ) . self::MARKER . "\n" . $content );
+		$block = '' === trim( (string) $content ) ? '' : self::MARKER . "\n" . $content;
+		if ( '' === trim( $existing ) && '' === $block ) {
+			// Nothing left to say: no file at all.
+			if ( is_file( $path ) ) {
+				unlink( $path );
+			}
+
+			return;
+		}
+
+		file_put_contents( $path, ( trim( $existing ) ? rtrim( $existing ) . ( $block ? "\n\n" : "\n" ) : '' ) . $block );
 	}
 }
