@@ -435,8 +435,7 @@ function SidebarSite( props = null ) {
                 {'pro' === options.plan && isPro() ?
                     <option value="update">{__('Changes Only', 'simply-static')}</option>
                     :
-                    <option disabled
-                            value="update">{__('Changes Only (Requires Simply Static Pro)', 'simply-static')}</option>
+                    <option disabled value="update">{__('Changes Only', 'simply-static')}</option>
                 }
                 {buildOptions}
                 {languageSelectOptions}
@@ -477,11 +476,9 @@ function SidebarSite( props = null ) {
                 </Notice>
             }
             {unpushedChanges > 0 && !isRollbackRunning && !isRunning && !isPaused && !('pro' === options.plan && isPro()) &&
-                <Tooltip text={__('Upgrade to Simply Static Pro to push only changes.', 'simply-static')}>
-                    <Notice status="info" isDismissible={false} className={"unpushed-changes-notice"}>
-                        <p>{unpushedChangesMessage}</p>
-                    </Notice>
-                </Tooltip>
+                <Notice status="info" isDismissible={false} className={"unpushed-changes-notice"}>
+                    <p>{unpushedChangesMessage}</p>
+                </Notice>
             }
 
             {!isRollbackRunning && !canRunExport && options.is_multisite && <>
@@ -493,13 +490,7 @@ function SidebarSite( props = null ) {
                     {__('Push', 'simply-static')}
 
                 </Button>
-                <Button
-                    target={'_blank'}
-                    variant={'link'}
-                    href={"https://simplystatic.com/pricing/"}
-                >
-                    { __('A push from another site is running. Upgrade to queue them.', 'simply-static') }
-                </Button>
+                <span>{ __('A push from another site is running.', 'simply-static') }</span>
                 <Button
                     variant={'link'}
                     isBusy={isResettingLock}

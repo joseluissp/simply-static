@@ -13,6 +13,7 @@ import {useContext, useEffect, useState} from '@wordpress/element';
 import {SettingsContext} from "../context/SettingsContext";
 import apiFetch from "@wordpress/api-fetch";
 import StudioNotice from "../components/StudioNotice";
+import CloudflareSettings from "../components/CloudflareSettings";
 import {shouldShowStudioDeploymentNotice} from "../utils/deployment";
 
 const {__} = wp.i18n;
@@ -48,6 +49,7 @@ function DeploymentSettings() {
         {label: __('ZIP Archive', 'simply-static'), value: 'zip'},
         {label: __('Local Directory', 'simply-static'), value: 'local'},
         {label: __('Static Studio', 'simply-static'), value: 'simply-static-studio'},
+        {label: __('Cloudflare', 'simply-static'), value: 'cloudflare'},
         {label: __('FTP', 'simply-static'), value: 'ftp'},
         {label: __('SFTP', 'simply-static'), value: 'sftp'},
         {label: __('GitHub', 'simply-static'), value: 'github'},
@@ -145,41 +147,6 @@ function DeploymentSettings() {
     };
 
     return (<div className={"inner-settings"}>
-        {!isStudio() && !isPro() &&
-            <>
-                <Card>
-                    <CardBody>
-                        <Flex direction="column" gap={2}>
-                            <p style={{margin: 0}}>
-                                <strong>{__('⚡ Migrate to Static Studio', 'simply-static')}</strong>{': '}
-                                {__('The all-in-one Static WordPress cloud-hosting platform. Enjoy secure WordPress, the fastest exports, and the best-performing static site hosting in one package.', 'simply-static')}
-                            </p>
-                            {migrateError && !installingMigrate &&
-                                <Notice status="error" isDismissible={false}>
-                                    <p>{migrateError}</p>
-                                </Notice>
-                            }
-                            <div>
-                                <Button
-                                    variant="primary"
-                                    isBusy={installingMigrate}
-                                    disabled={installingMigrate}
-                                    onClick={installAndActivateMigrate}
-                                >
-                                    {installingMigrate
-                                        ? __('Installing…', 'simply-static')
-                                        : (options.studio_migrate_active
-                                            ? __('Open Migration Settings', 'simply-static')
-                                            : __('Install & Activate Migration Plugin', 'simply-static'))
-                                    }
-                                </Button>
-                            </div>
-                        </Flex>
-                    </CardBody>
-                </Card>
-                <Spacer margin={5}/>
-            </>
-        }
         <Card>
             <CardHeader>
                 <b>{__('Deployment Settings', 'simply-static')}</b>
@@ -212,6 +179,7 @@ function DeploymentSettings() {
             </StudioNotice>
         }
         {canEditDeploymentSettings && <>
+        {deliveryMethod === 'cloudflare' && <CloudflareSettings/>}
         {deliveryMethod === 'simply-static-studio' &&
             <Card>
                 <CardHeader>
@@ -321,12 +289,6 @@ function DeploymentSettings() {
                             <FlexItem>
                                 <b>{__('GitHub', 'simply-static')}</b>
                             </FlexItem>
-                            {('free' === options.plan || !isPro()) &&
-                                <FlexItem>
-                                    <ExternalLink
-                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                </FlexItem>
-                            }
                         </Flex>
                     </CardHeader>
                     <CardBody>
@@ -527,12 +489,6 @@ function DeploymentSettings() {
                             <FlexItem>
                                 <b>{__('Tiiny.host', 'simply-static')}</b>
                             </FlexItem>
-                            {('free' === options.plan || !isPro()) &&
-                                <FlexItem>
-                                    <ExternalLink
-                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                </FlexItem>
-                            }
                         </Flex>
                     </CardHeader>
                     <CardBody>
@@ -603,12 +559,6 @@ function DeploymentSettings() {
                             <FlexItem>
                                 <b>{__('Bunny CDN', 'simply-static')}</b>
                             </FlexItem>
-                            {('free' === options.plan || !isPro()) &&
-                                <FlexItem>
-                                    <ExternalLink
-                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                </FlexItem>
-                            }
                         </Flex>
                     </CardHeader>
                     <CardBody>
@@ -715,12 +665,6 @@ function DeploymentSettings() {
                             <FlexItem>
                                 <b>{__('Amazon AWS S3', 'simply-static')}</b>
                             </FlexItem>
-                            {('free' === options.plan || !isPro()) &&
-                                <FlexItem>
-                                    <ExternalLink
-                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                </FlexItem>
-                            }
                         </Flex>
                     </CardHeader>
                     <CardBody>
@@ -915,12 +859,6 @@ function DeploymentSettings() {
                             <FlexItem>
                                 <b>{__('FTP', 'simply-static')}</b>
                             </FlexItem>
-                            {('free' === options.plan || !isPro()) &&
-                                <FlexItem>
-                                    <ExternalLink
-                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                </FlexItem>
-                            }
                         </Flex>
                     </CardHeader>
                     <CardBody>
@@ -1038,12 +976,6 @@ function DeploymentSettings() {
                             <FlexItem>
                                 <b>{__('SFTP', 'simply-static')}</b>
                             </FlexItem>
-                            {('free' === options.plan || !isPro()) &&
-                                <FlexItem>
-                                    <ExternalLink
-                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                </FlexItem>
-                            }
                         </Flex>
                     </CardHeader>
                     <CardBody>

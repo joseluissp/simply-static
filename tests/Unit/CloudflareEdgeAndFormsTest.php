@@ -78,17 +78,27 @@ final class CloudflareEdgeAndFormsTest extends UnitTestCase {
 		self::assertSame( 1, substr_count( $result, Cloudflare_Edge_Files::MARKER ) );
 	}
 
+	public function test_token_url_asks_for_the_permissions_the_plugin_uses(): void {
+		$url = Cloudflare::token_url();
+
+		self::assertStringStartsWith( 'https://dash.cloudflare.com/?to=/:account/api-tokens&permissionGroupKeys=', $url );
+		$keys = json_decode( rawurldecode( explode( '&', explode( 'permissionGroupKeys=', $url )[1] )[0] ), true );
+		self::assertContains( 'workers_scripts', array_column( $keys, 'key' ) );
+		self::assertContains( 'd1', array_column( $keys, 'key' ) );
+	}
+
 	public function test_default_worker_name_comes_from_the_host(): void {
 		// The stub home_url() is whatever the environment defines; the result must be a valid Worker name.
 		self::assertMatchesRegularExpression( '/^[a-z0-9][a-z0-9-]{0,53}$/', Cloudflare::default_worker_name() );
 	}
 
 	public function test_destination_follows_domain_then_workers_dev_then_relative(): void {
-		update_option( Cloudflare::OPTION, array( 'enabled' => true, 'domain' => 'www.example.com' ) );
+		$this->enable();
+		update_option( Cloudflare::OPTION, array( 'domain' => 'www.example.com' ) );
 		self::assertSame( 'absolute', Cloudflare::destination( 'destination_url_type', 'relative' ) );
 		self::assertSame( 'www.example.com', Cloudflare::destination( 'destination_host', 'x' ) );
 
-		update_option( Cloudflare::OPTION, array( 'enabled' => true ) );
+		update_option( Cloudflare::OPTION, array() );
 		update_option( Cloudflare::STATUS, array( 'host' => 'blog.me.workers.dev' ) );
 		self::assertSame( 'blog.me.workers.dev', Cloudflare::destination( 'destination_host', 'x' ) );
 
@@ -96,8 +106,12 @@ final class CloudflareEdgeAndFormsTest extends UnitTestCase {
 		self::assertSame( 'relative', Cloudflare::destination( 'destination_url_type', 'absolute' ) );
 		self::assertSame( '', Cloudflare::destination( 'relative_path', '/old' ) );
 
-		update_option( Cloudflare::OPTION, array( 'enabled' => false ) );
+		update_option( 'simply-static', array( 'delivery_method' => 'zip' ) );
 		self::assertSame( 'absolute', Cloudflare::destination( 'destination_url_type', 'absolute' ) );
+	}
+
+	private function enable(): void {
+		update_option( 'simply-static', array( 'delivery_method' => 'cloudflare' ) );
 	}
 
 	private function dom( string $html ): \DOMDocument {
@@ -108,7 +122,8 @@ final class CloudflareEdgeAndFormsTest extends UnitTestCase {
 	}
 
 	public function test_post_forms_are_rewritten_and_php_forms_left_alone(): void {
-		update_option( Cloudflare::OPTION, array( 'enabled' => true, 'forms' => true ) );
+		$this->enable();
+		update_option( Cloudflare::OPTION, array( 'forms' => true ) );
 		update_option( Cloudflare_Forms::OPTION, array( 'sitekey' => 'KEY' ) );
 
 		$dom = $this->dom(
@@ -132,13 +147,14 @@ final class CloudflareEdgeAndFormsTest extends UnitTestCase {
 	}
 
 	public function test_forms_untouched_when_disabled_or_without_forms(): void {
-		update_option( Cloudflare::OPTION, array( 'enabled' => true, 'forms' => false ) );
+		$this->enable();
+		update_option( Cloudflare::OPTION, array( 'forms' => false ) );
 		$dom = $this->dom( '<body><form method="post"><input name="a"></form></body>' );
 		$before = $dom->saveHTML();
 
 		self::assertSame( $before, Cloudflare_Forms::rewrite_forms( $dom, 'https://example.org/' )->saveHTML() );
 
-		update_option( Cloudflare::OPTION, array( 'enabled' => true, 'forms' => true ) );
+		update_option( Cloudflare::OPTION, array( 'forms' => true ) );
 		$plain = $this->dom( '<body><p>hi</p></body>' );
 		self::assertStringNotContainsString( '<script', Cloudflare_Forms::rewrite_forms( $plain, 'https://example.org/' )->saveHTML() );
 	}

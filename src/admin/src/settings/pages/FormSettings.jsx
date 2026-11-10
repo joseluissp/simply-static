@@ -171,12 +171,6 @@ function FormSettings() {
                     <FlexItem>
                         <b>{__('Forms', 'simply-static')}</b>
                     </FlexItem>
-                    {('free' === options.plan || !isPro()) &&
-                        <FlexItem>
-                            <ExternalLink
-                                href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                        </FlexItem>
-                    }
                 </Flex>
             </CardHeader>
             <CardBody>
@@ -242,12 +236,6 @@ function FormSettings() {
                     <FlexItem>
                         <b>{__('Comments', 'simply-static')}</b>
                     </FlexItem>
-                    {('free' === options.plan || !isPro()) &&
-                        <FlexItem>
-                            <ExternalLink
-                                href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                        </FlexItem>
-                    }
                 </Flex>
             </CardHeader>
             <CardBody>
@@ -294,12 +282,6 @@ function FormSettings() {
                             <FlexItem>
                                 <b>{__('Captcha', 'simply-static')}</b>
                             </FlexItem>
-                            {('free' === options.plan || !isPro()) && (
-                                <FlexItem>
-                                    <ExternalLink
-                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                </FlexItem>
-                            )}
                         </Flex>
                     </CardHeader>
                     <CardBody>

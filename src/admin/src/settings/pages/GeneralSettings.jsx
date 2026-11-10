@@ -595,12 +595,6 @@ function GeneralSettings() {
                                                     maxSuggestions={100}
                                                     className="horizontal-token-field"
                                                 />
-                                                {!isPro() && (
-                                                    <ExternalLink
-                                                        style={{marginTop: "5px"}}
-                                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}
-                                                    </ExternalLink>
-                                                )}
                                             </>
                                         ) : (
                                             <p>{__('Loading plugins...', 'simply-static')}</p>
@@ -647,11 +641,6 @@ function GeneralSettings() {
                                                     maxSuggestions={100}
                                                     className="horizontal-token-field"
                                                 />
-                                                {!isPro() && (
-                                                    <ExternalLink
-                                                        style={{marginTop: "5px"}}
-                                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                                )}
                                                 <Spacer margin={2}/>
                                             </>
                                         ) : (
@@ -709,24 +698,7 @@ function GeneralSettings() {
                 {generate404 && (
                     <>
                         <SelectControl
-                            label={
-                                <>
-                                    {!(isPro && typeof isPro === 'function' ? isPro() : false) ? (
-                                            <>
-                                                <span style={{position: "relative", bottom: "-15px"}}>
-                                                {__('Custom 404 page (optional)', 'simply-static')}
-                                                </span>
-                                                <ExternalLink href="https://simplystatic.com">
-                                                    {__('Requires Simply Static Pro', 'simply-static')}
-                                                </ExternalLink>
-                                            </>
-                                        ) :
-                                        <>
-                                            {__('Custom 404 page (optional)', 'simply-static')}
-                                        </>
-                                    }
-                                </>
-                            }
+                            label={__('Custom 404 page (optional)', 'simply-static')}
                             value={settings.custom_404_page ?? 0}
                             __next40pxDefaultSize
                             __nextHasNoMarginBottom

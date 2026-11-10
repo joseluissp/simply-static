@@ -80,7 +80,7 @@ class Multisite {
 		if ( ! $claimed ) {
 			$owner = $this->current_running_export_site_id();
 			if ( absint( $owner ) !== absint( $blog_id ) ) {
-				throw new \RuntimeException( __( 'Export is already running on another site. Upgrade to Pro to queue site exports.', 'simply-static' ) );
+				throw new \RuntimeException( __( 'Export is already running on another site.', 'simply-static' ) );
 			}
 		}
     }
@@ -157,7 +157,7 @@ class Multisite {
             return;
         }
 
-        throw new \Exception( __( 'Export is already running on another site. Upgrade to Pro to queue site exports.', 'simply-static' ) );
+        throw new \Exception( __( 'Export is already running on another site.', 'simply-static' ) );
      }
 
      public function can_disable_export() {

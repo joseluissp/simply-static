@@ -11,6 +11,8 @@ function StudioNotice({
     cta = __('Explore Pro →', 'simply-static'),
     ctaUrl = 'https://simplystatic.com/simply-static-pro/?utm_source=plugin&utm_medium=settings&utm_campaign=studio-notice',
 }) {
+    // Upsell notice: this fork does not advertise paid plans.
+    return null;
     return (
         <Notice status="warning" isDismissible={false} className="studio-settings-notice">
             <h3>{heading}</h3>

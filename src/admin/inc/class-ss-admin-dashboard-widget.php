@@ -274,18 +274,7 @@ class Admin_Dashboard_Widget {
 	 */
 	private function render_upsell() {
 		?>
-		<div class="ss-widget-upsell">
-			<div class="ss-widget-upsell-cards">
- 			<a href="<?php echo esc_url( 'https://simplystatic.com/pricing/?utm_source=wordpress&utm_medium=dashboard-widget&utm_campaign=upsell&utm_content=pro' ); ?>" target="_blank" rel="noopener noreferrer" class="ss-widget-upsell-card">
-					<p class="ss-upsell-title"><?php esc_html_e( 'Simply Static Pro', 'simply-static' ); ?> →</p>
-					<p class="ss-upsell-desc"><?php esc_html_e( 'GitHub & CDN deployment, forms, search, and more.', 'simply-static' ); ?></p>
-				</a>
- 			<a href="<?php echo esc_url( 'https://simplystatic.com/simply-static-studio/?utm_source=wordpress&utm_medium=dashboard-widget&utm_campaign=upsell&utm_content=studio' ); ?>" target="_blank" rel="noopener noreferrer" class="ss-widget-upsell-card">
- 				<p class="ss-upsell-title"><?php esc_html_e( 'Static Studio', 'simply-static' ); ?> →</p>
-					<p class="ss-upsell-desc"><?php esc_html_e( 'WordPress operations with Site Health, reports, uptime, performance checks, and hosting.', 'simply-static' ); ?></p>
-				</a>
-			</div>
-		</div>
+		<?php // Intentionally empty: this fork does not advertise paid plans. ?>
 		<?php
 	}
 
@@ -299,6 +288,7 @@ class Admin_Dashboard_Widget {
 	private function get_delivery_label( $method ) {
 		$labels = apply_filters( 'ss_dashboard_widget_delivery_labels', array(
 			'zip'          => __( 'ZIP Archive', 'simply-static' ),
+			'cloudflare'   => __( 'Cloudflare', 'simply-static' ),
 			'local'        => __( 'Local Directory', 'simply-static' ),
 			'github'       => __( 'GitHub', 'simply-static' ),
 			'cdn'          => __( 'CDN', 'simply-static' ),

@@ -130,15 +130,6 @@ function Site(props) {
                         onClick={() => window.location = site.settings_url}>
                         <Dashicon icon="admin-generic"/>
                     </Button>
-                    {!canRunFromNetwork() &&
-                        <Button
-                            target={'_blank'}
-                            variant={'link'}
-                            href={"https://simplystatic.com/pricing/"}
-                        >
-                            {__('Upgrade to manage from network.', 'simply-static')}
-                        </Button>
-                    }
                 </Buttons>
 
             </td>

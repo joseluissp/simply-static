@@ -53,12 +53,6 @@ function SearchSettings() {
                     <FlexItem>
                         <b>{__('Search', 'simply-static')}</b>
                     </FlexItem>
-                    {('free' === options.plan || !isPro()) &&
-                        <FlexItem>
-                            <ExternalLink
-                                href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                        </FlexItem>
-                    }
                 </Flex>
             </CardHeader>
             <CardBody>
@@ -197,12 +191,6 @@ function SearchSettings() {
                         <FlexItem>
                             <b>{__('Indexing', 'simply-static')}</b>
                         </FlexItem>
-                        {('free' === options.plan || !isPro()) &&
-                            <FlexItem>
-                                <ExternalLink
-                                    href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                            </FlexItem>
-                        }
                     </Flex>
                 </CardHeader>
                 <CardBody>
@@ -291,12 +279,6 @@ function SearchSettings() {
                             <FlexItem>
                                 <b>{__('Fuse.js', 'simply-static')}</b>
                             </FlexItem>
-                            {('free' === options.plan || !isPro()) &&
-                                <FlexItem>
-                                    <ExternalLink
-                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                </FlexItem>
-                            }
                         </Flex>
                     </CardHeader>
                     <CardBody>
@@ -424,12 +406,6 @@ function SearchSettings() {
                             <FlexItem>
                                 <b>{__('Algolia API', 'simply-static')}</b>
                             </FlexItem>
-                            {('free' === options.plan || !isPro()) &&
-                                <FlexItem>
-                                    <ExternalLink
-                                        href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                                </FlexItem>
-                            }
                         </Flex>
                     </CardHeader>
                     <CardBody>

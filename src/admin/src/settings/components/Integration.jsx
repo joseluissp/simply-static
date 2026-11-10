@@ -38,10 +38,7 @@ function Integration({integration, settings, toggleIntegration}) {
                     )}
                 </FlexBlock>
                 <FlexBlock style={{ flex: '0 0 30%', maxWidth: '30%' }} className={'ss-align-right ss-no-shrink'}>
-                    {!canRun && <span><em>{__('Missing plugin', 'simply-static')}</em>{!canUse &&
-                        <div><Button variant="link" href={"https://simplystatic.com/pricing/"}>
-                            {__('Requires Simply Static Pro', 'simply-static')}
-                        </Button></div>}</span>}
+                    {!canRun && <span><em>{__('Missing plugin', 'simply-static')}</em></span>}
                     {(canRun && canUse && !alwaysActive) &&
                         <Flex justify="flex-end" direction="column" style={{ alignItems: 'flex-end' }}>
                             <ToggleControl

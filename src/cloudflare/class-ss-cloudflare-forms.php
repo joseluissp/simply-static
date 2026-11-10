@@ -27,7 +27,7 @@ class Cloudflare_Forms {
 	public static function enabled() {
 		$s = Cloudflare::settings();
 
-		return ! empty( $s['enabled'] ) && ! empty( $s['forms'] );
+		return Cloudflare::enabled() && ! empty( $s['forms'] );
 	}
 
 	/**

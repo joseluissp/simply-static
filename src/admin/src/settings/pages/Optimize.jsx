@@ -142,12 +142,6 @@ function Optimize() {
                     <FlexItem>
                         <b>{__('Minify & Aggregation', 'simply-static')}</b>
                     </FlexItem>
-                    {('free' === options.plan || !isPro()) &&
-                        <FlexItem>
-                            <ExternalLink
-                                href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                        </FlexItem>
-                    }
                 </Flex>
             </CardHeader>
             <CardBody>
@@ -297,12 +291,6 @@ function Optimize() {
                     <FlexItem>
                         <b>{__('Defer & Delay', 'simply-static')}</b>
                     </FlexItem>
-                    {('free' === options.plan || !isPro()) &&
-                        <FlexItem>
-                            <ExternalLink
-                                href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                        </FlexItem>
-                    }
                 </Flex>
             </CardHeader>
             <CardBody>
@@ -462,12 +450,6 @@ function Optimize() {
                     <FlexItem>
                         <b>{__('Image Optimization', 'simply-static')}</b>
                     </FlexItem>
-                    {('free' === options.plan || !isPro()) &&
-                        <FlexItem>
-                            <ExternalLink
-                                href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                        </FlexItem>
-                    }
                 </Flex>
             </CardHeader>
             <CardBody>
@@ -558,12 +540,6 @@ function Optimize() {
                         <FlexItem>
                             <b>{__('Critical CSS', 'simply-static')}</b>
                         </FlexItem>
-                        {!isStudio() &&
-                            <FlexItem>
-                                <ExternalLink
-                                    href="https://simplystatic.com/simply-static-studio/"> {__('Requires Static Studio', 'simply-static')}</ExternalLink>
-                            </FlexItem>
-                        }
                     </Flex>
                 </CardHeader>
                 <CardBody>
@@ -617,12 +593,6 @@ function Optimize() {
                     <FlexItem>
                         <b>{__('Versioning', 'simply-static')}</b>
                     </FlexItem>
-                    {('free' === options.plan || !isPro()) &&
-                        <FlexItem>
-                            <ExternalLink
-                                href="https://simplystatic.com"> {__('Requires Simply Static Pro', 'simply-static')}</ExternalLink>
-                        </FlexItem>
-                    }
                 </Flex>
             </CardHeader>
             <CardBody>

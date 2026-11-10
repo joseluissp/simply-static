@@ -192,7 +192,8 @@ class Admin_Settings {
             add_action( "admin_print_scripts-{$diagnostics_suffix}", array( $this, 'add_settings_scripts' ) );
         }
 
-        if ( ! defined( 'SIMPLY_STATIC_PRO_VERSION' ) ) {
+        // Fork: the Pro/Studio upsell menu entries are disabled.
+        if ( false && ! defined( 'SIMPLY_STATIC_PRO_VERSION' ) ) {
             // Add Simply Static Pro submenu that links to external URL
             add_submenu_page(
                     'simply-static-generate',
