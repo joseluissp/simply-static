@@ -1,5 +1,6 @@
 import {
     Button,
+    CheckboxControl,
     Card,
     CardBody,
     CardHeader,
@@ -83,6 +84,66 @@ function Versions({enabled}) {
                 </CardBody>
             </Card>
         </>
+    );
+}
+
+/**
+ * Every page WordPress can list, with a checkbox each. Unticked pages go to `excluded_urls`
+ * (paths) and are skipped by the export. Loaded when the panel is opened: it runs the crawlers.
+ */
+function Pages({excluded, onChange}) {
+    const [groups, setGroups] = useState(null);
+    const [error, setError] = useState('');
+
+    const load = () => {
+        if (groups) {
+            return;
+        }
+        apiFetch({path: PATH + '/pages'})
+            .then((response) => setGroups(response.groups || []))
+            .catch((e) => setError(e?.message || __('Could not load the pages.', 'simply-static')));
+    };
+
+    const skip = (paths, skipped) => {
+        const next = new Set(excluded);
+        paths.forEach((path) => (skipped ? next.add(path) : next.delete(path)));
+        onChange([...next]);
+    };
+
+    return (
+        <details onToggle={(e) => e.target.open && load()}>
+            <summary>{__('Pages to publish', 'simply-static')}{excluded.length > 0 && ` (${excluded.length} ${__('left out', 'simply-static')})`}</summary>
+            <Spacer margin={3}/>
+            <p className="description">
+                {__('Untick the pages you do not want on the static site. The home page is always published. Links to unticked pages stay where they are and lead to a 404. New content is published unless you untick it here.', 'simply-static')}
+            </p>
+            {error && <Notice status="error" isDismissible={false}><p>{error}</p></Notice>}
+            {!groups && !error && <Spinner/>}
+            {(groups || []).map((group) => {
+                const paths = group.items.filter((item) => !item.locked).map((item) => item.path);
+                return (
+                    <div key={group.id} style={{marginBottom: 16}}>
+                        <Flex justify="flex-start" gap={3}>
+                            <b>{group.label} ({group.items.length})</b>
+                            <Button variant="link" onClick={() => skip(paths, false)}>{__('All', 'simply-static')}</Button>
+                            <Button variant="link" onClick={() => skip(paths, true)}>{__('None', 'simply-static')}</Button>
+                        </Flex>
+                        <div style={{maxHeight: 240, overflowY: 'auto', marginTop: 8}}>
+                            {group.items.map((item) => (
+                                <CheckboxControl
+                                    key={item.path}
+                                    __nextHasNoMarginBottom
+                                    label={item.path}
+                                    disabled={item.locked}
+                                    checked={item.locked || !excluded.includes(item.path)}
+                                    onChange={(checked) => skip([item.path], !checked)}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+        </details>
     );
 }
 
@@ -260,6 +321,9 @@ export default function CloudflareSettings() {
                         checked={!!form.hide_wp}
                         onChange={set('hide_wp')}
                     />
+
+                    <Pages excluded={form.excluded_urls || []} onChange={set('excluded_urls')}/>
+                    <Spacer margin={3}/>
 
                     <details>
                         <summary>{__('Advanced', 'simply-static')}</summary>

@@ -64,6 +64,7 @@ class Cloudflare_Changes {
 			(int) $s['forms'],
 			(int) $s['search'],
 			(int) $s['hide_wp'],
+			Cloudflare_Pages::clean_paths( (array) $s['excluded_urls'] ),
 		);
 		foreach ( Hide_WP::OPTIONS as $name ) {
 			$parts[] = wp_json_encode( $options->get( $name ) );

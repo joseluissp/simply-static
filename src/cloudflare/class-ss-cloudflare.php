@@ -53,6 +53,7 @@ class Cloudflare {
 		Hide_WP::init();
 		Cloudflare_Ui::init();
 		Cloudflare_Redirects::init();
+		Cloudflare_Pages::init();
 	}
 
 	/** Early builds kept an "enabled" flag here; the delivery method is the single switch now. */
@@ -93,6 +94,7 @@ class Cloudflare {
 			'hide_wp'            => true,
 			'autopublish_type'   => 'update',
 			'disable_workers_dev' => false,
+			'excluded_urls'      => array(),
 		) );
 
 		// The Worker's name is its identity: once deployed, a moved or cloned site (local copy, new
@@ -557,6 +559,7 @@ class Cloudflare {
 			'hide_wp'            => ! empty( $in['hide_wp'] ),
 			'autopublish_type'   => $pick( 'autopublish_type', array( 'update', 'export' ), 'update' ),
 			'disable_workers_dev' => ! empty( $in['disable_workers_dev'] ),
+			'excluded_urls'      => isset( $in['excluded_urls'] ) ? Cloudflare_Pages::clean_paths( (array) $in['excluded_urls'] ) : ( isset( $old['excluded_urls'] ) ? (array) $old['excluded_urls'] : array() ),
 		), false );
 
 		// Pointing the site at its final domain changes every link: publish again (as a full export, see Cloudflare_Changes).

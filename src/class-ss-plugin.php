@@ -211,6 +211,7 @@ class Plugin {
 		require_once $path . 'src/cloudflare/class-ss-cloudflare-ui.php';
 		require_once $path . 'src/cloudflare/class-ss-cloudflare-redirects.php';
 		require_once $path . 'src/cloudflare/class-ss-cloudflare-verify.php';
+		require_once $path . 'src/cloudflare/class-ss-cloudflare-pages.php';
 		require_once $path . 'src/cloudflare/class-ss-cloudflare.php';
 		require_once $path . 'src/handlers/class-ss-page-handler.php';
 		require_once $path . 'src/class-ss-query.php';
