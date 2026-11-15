@@ -125,7 +125,14 @@ class Cloudflare_Forms {
 		$form->appendChild( $wrap );
 	}
 
-	/** One tiny script per page: submits via fetch, shows the result next to the form. */
+	/**
+	 * One tiny script per page: submits via fetch, shows the result next to the form.
+	 *
+	 * It listens in the capture phase and stops the event, so a form plugin's own script (Contact
+	 * Form 7 posts to its REST route, which does not exist here) never sees the submit. Those plugins
+	 * also validate by hand (`novalidate` + `aria-required`), which our fetch would skip: the browser
+	 * validates instead.
+	 */
 	protected static function add_script( \DOMDocument $dom, $turnstile ) {
 		$body = $dom->getElementsByTagName( 'body' )->item( 0 );
 		if ( ! $body ) {
@@ -133,7 +140,7 @@ class Cloudflare_Forms {
 		}
 
 		$js = <<<'JS'
-document.addEventListener('submit',function(e){var f=e.target;if(!f.matches||!f.matches('form[data-ss-form]'))return;e.preventDefault();var b=f.querySelector('[type=submit],button:not([type])'),m=f.querySelector('.ss-form-msg');if(!m){m=document.createElement('p');m.className='ss-form-msg';m.setAttribute('role','status');f.appendChild(m);}if(b)b.disabled=true;fetch(f.action,{method:'POST',body:new FormData(f),headers:{Accept:'application/json'}}).then(function(r){return r.json();}).then(function(j){if(j.ok){f.reset();m.textContent=f.getAttribute('data-ss-ok')||'Thank you! Your message has been sent.';}else{m.textContent=f.getAttribute('data-ss-error')||'Something went wrong. Please try again.';if(window.turnstile)turnstile.reset();}}).catch(function(){m.textContent=f.getAttribute('data-ss-error')||'Something went wrong. Please try again.';}).then(function(){if(b)b.disabled=false;});});
+(function(){function fix(){document.querySelectorAll('form[data-ss-form]').forEach(function(f){f.noValidate=false;f.querySelectorAll('input[aria-required=true],textarea[aria-required=true],select[aria-required=true]').forEach(function(i){i.required=true;});});}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',fix);window.addEventListener('load',fix);fix();document.addEventListener('submit',function(e){var f=e.target;if(!f.matches||!f.matches('form[data-ss-form]'))return;e.preventDefault();e.stopImmediatePropagation();var b=f.querySelector('[type=submit],button:not([type])'),m=f.querySelector('.ss-form-msg');if(!m){m=document.createElement('p');m.className='ss-form-msg';m.setAttribute('role','status');f.appendChild(m);}if(b)b.disabled=true;fetch(f.action,{method:'POST',body:new FormData(f),headers:{Accept:'application/json'}}).then(function(r){return r.json();}).then(function(j){if(j.ok){f.reset();m.textContent=f.getAttribute('data-ss-ok')||'Thank you! Your message has been sent.';}else{m.textContent=f.getAttribute('data-ss-error')||'Something went wrong. Please try again.';if(window.turnstile)turnstile.reset();}}).catch(function(){m.textContent=f.getAttribute('data-ss-error')||'Something went wrong. Please try again.';}).then(function(){if(b)b.disabled=false;});},true);})();
 JS;
 
 		$script = $dom->createElement( 'script' );

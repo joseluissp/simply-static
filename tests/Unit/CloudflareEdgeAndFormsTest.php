@@ -146,6 +146,31 @@ final class CloudflareEdgeAndFormsTest extends UnitTestCase {
 		self::assertStringContainsString( 'action="https://list.example.net/subscribe"', $xml );
 	}
 
+	public function test_the_submit_script_takes_over_from_a_form_plugins_own_script(): void {
+		$this->enable();
+		update_option( Cloudflare::OPTION, array( 'forms' => true ) );
+
+		// Contact Form 7 markup: validates by hand (novalidate + aria-required) and posts to its REST route.
+		$dom = $this->dom(
+			'<body><form class="wpcf7-form" method="post" action="" novalidate="novalidate">'
+			. '<input name="your-email" type="email" aria-required="true"><button type="submit">Send</button></form></body>'
+		);
+		$xml = Cloudflare_Forms::rewrite_forms( $dom, 'https://example.org/contacto/' )->saveHTML();
+
+		preg_match( '#<script>(.*?)</script>#s', $xml, $script );
+		self::assertNotEmpty( $script, 'the page gets the submit script' );
+		$js = $script[1];
+
+		// Capture phase on document runs before any handler on the form, and nothing after ours may see the event.
+		self::assertStringContainsString( "document.addEventListener('submit'", $js );
+		self::assertMatchesRegularExpression( '#\},true\);\}\)\(\);\s*$#', $js, 'the listener is registered for the capture phase' );
+		self::assertStringContainsString( 'e.stopImmediatePropagation()', $js );
+		// The browser validates in place of the plugin's script.
+		self::assertStringContainsString( 'f.noValidate=false', $js );
+		self::assertStringContainsString( 'input[aria-required=true]', $js );
+		self::assertStringContainsString( 'i.required=true', $js );
+	}
+
 	public function test_forms_untouched_when_disabled_or_without_forms(): void {
 		$this->enable();
 		update_option( Cloudflare::OPTION, array( 'forms' => false ) );
