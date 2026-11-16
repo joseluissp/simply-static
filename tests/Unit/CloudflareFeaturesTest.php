@@ -94,6 +94,51 @@ namespace Simply_Static\Tests\Unit {
 			self::assertSame( array(), $client->calls, 'no API calls before there is a domain' );
 		}
 
+		public function test_email_through_the_own_mailbox_needs_no_domain_and_no_cloudflare_calls(): void {
+			$client   = new FakeCloudflare( 'acc', 'tok', 'site' );
+			$settings = array( 'notify' => true, 'notify_email' => 'info@example.com', 'domain' => '', 'smtp_host' => 'SMTP.Hostinger.com', 'smtp_user' => 'info@example.com', 'smtp_password' => 's3cret' );
+
+			$bindings = Cloudflare_Email::provision( $client, $settings );
+			$by_name  = array_column( $bindings, null, 'name' );
+
+			self::assertSame( array(), $client->calls, 'Email Routing is never touched: the domain keeps its own MX records' );
+			self::assertArrayNotHasKey( 'EMAIL', $by_name );
+			self::assertSame( 'smtp.hostinger.com', $by_name['MAIL_SMTP_HOST']['text'] );
+			self::assertSame( 'secret_text', $by_name['MAIL_SMTP_PASS']['type'], 'the password is a Worker secret' );
+			self::assertSame( 's3cret', $by_name['MAIL_SMTP_PASS']['text'] );
+			self::assertSame( 'info@example.com', $by_name['MAIL_FROM']['text'], 'the mailbox is also the sender and the login' );
+			self::assertSame( 'info@example.com', $by_name['MAIL_TO']['text'] );
+
+			$state = Cloudflare_Email::status();
+			self::assertSame( 'smtp', $state['state'] );
+			self::assertStringNotContainsString( 's3cret', (string) json_encode( get_option( Cloudflare_Email::OPTION ) ), 'the password is not kept in the status option' );
+		}
+
+		public function test_email_falls_back_to_routing_when_the_mailbox_is_incomplete(): void {
+			$client = new FakeCloudflare( 'acc', 'tok', 'site' );
+			$base   = array( 'notify' => true, 'notify_email' => 'info@example.com', 'domain' => '', 'smtp_host' => 'smtp.hostinger.com' );
+
+			foreach ( array(
+				array( 'smtp_user' => 'info@example.com', 'smtp_password' => '' ),
+				array( 'smtp_user' => 'not-an-email', 'smtp_password' => 'x' ),
+				array( 'smtp_user' => 'info@example.com', 'smtp_password' => 'x', 'smtp_host' => 'bad host/' ),
+			) as $partial ) {
+				self::assertSame( array(), Cloudflare_Email::provision( $client, array_merge( $base, $partial ) ) );
+				self::assertSame( 'needs_domain', Cloudflare_Email::status()['state'] );
+			}
+		}
+
+		public function test_the_smtp_password_never_goes_back_to_the_browser(): void {
+			$this->core();
+			update_option( Cloudflare::OPTION, array( 'smtp_user' => 'info@example.com', 'smtp_password' => 'topsecret', 'token' => 'tok123' ) );
+
+			$payload = Cloudflare::payload();
+
+			self::assertStringNotContainsString( 'topsecret', (string) json_encode( $payload ) );
+			self::assertTrue( $payload['smtp_password_set'] );
+			self::assertSame( 'info@example.com', $payload['settings']['smtp_user'] );
+		}
+
 		public function test_email_off_when_disabled_or_recipient_invalid(): void {
 			$client = new FakeCloudflare( 'acc', 'tok', 'site' );
 

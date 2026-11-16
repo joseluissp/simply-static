@@ -90,6 +90,10 @@ class Cloudflare {
 			'extra_redirects'    => '',
 			'notify'             => true,
 			'notify_email'       => '',
+			// Optional: send the messages through the owner's own mailbox (see Cloudflare_Email).
+			'smtp_host'          => 'smtp.hostinger.com',
+			'smtp_user'          => '',
+			'smtp_password'      => '',
 			'search'             => true,
 			'hide_wp'            => true,
 			'autopublish_type'   => 'update',
@@ -104,7 +108,7 @@ class Cloudflare {
 			$settings['worker_name'] = $status['worker'];
 		}
 
-		foreach ( array( 'account_id' => 'SIMPLY_STATIC_CF_ACCOUNT_ID', 'token' => 'SIMPLY_STATIC_CF_API_TOKEN', 'worker_name' => 'SIMPLY_STATIC_CF_WORKER' ) as $key => $constant ) {
+		foreach ( array( 'account_id' => 'SIMPLY_STATIC_CF_ACCOUNT_ID', 'token' => 'SIMPLY_STATIC_CF_API_TOKEN', 'worker_name' => 'SIMPLY_STATIC_CF_WORKER', 'smtp_password' => 'SIMPLY_STATIC_CF_SMTP_PASSWORD' ) as $key => $constant ) {
 			if ( defined( $constant ) ) {
 				$settings[ $key ] = constant( $constant );
 			}
@@ -315,6 +319,9 @@ class Cloudflare {
 			case 'pending_verification':
 				/* translators: %s: email address. */
 				return sprintf( __( 'Email: Cloudflare sent a confirmation message to %s. Click its link once and form messages will start arriving.', 'simply-static' ), $mail['to'] );
+			case 'smtp':
+				/* translators: 1: recipient address, 2: sender mailbox, 3: mail server. */
+				return sprintf( __( 'Form messages are emailed to %1$s from %2$s through %3$s.', 'simply-static' ), $mail['to'], $mail['from'], $mail['detail'] );
 			case 'needs_domain':
 				return __( 'Email notifications turn on by themselves once the site has its own domain in your Cloudflare account. Until then messages are kept in the Submissions list.', 'simply-static' );
 			case 'zone_pending':
@@ -459,7 +466,7 @@ class Cloudflare {
 		$status = get_option( self::STATUS, array() );
 		$forms  = get_option( Cloudflare_Forms::OPTION, array() );
 		$locked = array();
-		foreach ( array( 'account_id' => 'SIMPLY_STATIC_CF_ACCOUNT_ID', 'token' => 'SIMPLY_STATIC_CF_API_TOKEN', 'worker_name' => 'SIMPLY_STATIC_CF_WORKER' ) as $key => $constant ) {
+		foreach ( array( 'account_id' => 'SIMPLY_STATIC_CF_ACCOUNT_ID', 'token' => 'SIMPLY_STATIC_CF_API_TOKEN', 'worker_name' => 'SIMPLY_STATIC_CF_WORKER', 'smtp_password' => 'SIMPLY_STATIC_CF_SMTP_PASSWORD' ) as $key => $constant ) {
 			if ( defined( $constant ) ) {
 				$locked[] = $key;
 			}
@@ -467,12 +474,13 @@ class Cloudflare {
 
 		$stored = get_option( self::OPTION, array() );
 		$worker = ! empty( $status['worker'] ) ? $status['worker'] : $s['worker_name']; // The one actually deployed.
-		unset( $s['token'] );
+		unset( $s['token'], $s['smtp_password'] );
 
 		return array(
 			'enabled'      => self::enabled(),
 			'settings'     => array_merge( $s, array( 'worker_name' => isset( $stored['worker_name'] ) ? $stored['worker_name'] : '' ) ),
 			'token_set'    => (bool) self::settings()['token'],
+			'smtp_password_set' => (bool) self::settings()['smtp_password'],
 			'locked'       => $locked,
 			'default_name' => self::default_worker_name(),
 			'token_url'    => self::token_url(),
@@ -538,6 +546,10 @@ class Cloudflare {
 			return isset( $in[ $key ] ) && in_array( $in[ $key ], $allowed, true ) ? $in[ $key ] : $default;
 		};
 
+		$smtp_password = isset( $in['smtp_password'] ) ? (string) $in['smtp_password'] : '';
+		$smtp_host     = isset( $in['smtp_host'] ) ? strtolower( trim( sanitize_text_field( (string) $in['smtp_host'] ) ) ) : '';
+		$smtp_user     = sanitize_email( isset( $in['smtp_user'] ) ? (string) $in['smtp_user'] : '' );
+
 		update_option( self::OPTION, array(
 			'account_id'         => sanitize_text_field( isset( $in['account_id'] ) ? (string) $in['account_id'] : '' ),
 			'worker_name'        => sanitize_key( isset( $in['worker_name'] ) ? (string) $in['worker_name'] : '' ),
@@ -553,6 +565,10 @@ class Cloudflare {
 			'extra_redirects'    => $text( 'extra_redirects' ),
 			'notify'             => ! empty( $in['notify'] ),
 			'notify_email'       => sanitize_email( isset( $in['notify_email'] ) ? (string) $in['notify_email'] : '' ),
+			'smtp_host'          => '' !== $smtp_host ? $smtp_host : 'smtp.hostinger.com',
+			'smtp_user'          => $smtp_user,
+			// Blank keeps the stored password, like the token: it is never sent back to the browser.
+			'smtp_password'      => '' !== $smtp_password ? $smtp_password : ( isset( $old['smtp_password'] ) ? $old['smtp_password'] : '' ),
 			'search'             => ! empty( $in['search'] ),
 			'hide_wp'            => ! empty( $in['hide_wp'] ),
 			'autopublish_type'   => $pick( 'autopublish_type', array( 'update', 'export' ), 'update' ),
@@ -563,6 +579,15 @@ class Cloudflare {
 		// Pointing the site at its final domain changes every link: publish again (as a full export, see Cloudflare_Changes).
 		if ( ( isset( $old['domain'] ) ? $old['domain'] : '' ) !== $host ) {
 			self::queue_publish();
+		}
+
+		// The mailbox travels as a Worker binding: a new one only reaches the Worker with the next deploy.
+		$new = get_option( self::OPTION, array() );
+		foreach ( array( 'smtp_host', 'smtp_user', 'smtp_password' ) as $key ) {
+			if ( ( isset( $old[ $key ] ) ? $old[ $key ] : '' ) !== $new[ $key ] ) {
+				self::queue_publish();
+				break;
+			}
 		}
 
 		// Picking Cloudflare in the form is choosing it as the delivery method.

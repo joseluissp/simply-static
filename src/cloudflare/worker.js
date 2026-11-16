@@ -6,7 +6,9 @@
 //   DB                D1 database with table ss_submissions (form storage)
 //   TURNSTILE_SECRET  secret for Cloudflare Turnstile verification
 //   WEBHOOK_URL       POSTed a JSON copy of every submission
-//   EMAIL, MAIL_TO, MAIL_FROM, MAIL_SITE   emails each submission to the owner (Email Service)
+//   MAIL_TO, MAIL_FROM, MAIL_SITE   emails each submission to the owner, through one of:
+//     MAIL_SMTP_HOST + MAIL_SMTP_PASS   the owner's own mailbox over SMTP (port 465); MAIL_FROM is its login
+//     EMAIL                             Cloudflare Email Service (send_email binding)
 
 const MAX_BODY = 100 * 1024;
 const MAX_FIELDS = 100;
@@ -111,7 +113,7 @@ async function handleForm( request, env, ctx, url ) {
 		);
 	}
 
-	if ( env.EMAIL && env.MAIL_TO && env.MAIL_FROM ) {
+	if ( ( env.EMAIL || ( env.MAIL_SMTP_HOST && env.MAIL_SMTP_PASS ) ) && env.MAIL_TO && env.MAIL_FROM ) {
 		ctx.waitUntil( notify( env, page, clean ) );
 	}
 
@@ -126,8 +128,9 @@ async function notify( env, page, fields ) {
 		.map( ( [ key, value ] ) => key + ': ' + ( Array.isArray( value ) ? value.join( ', ' ) : value ) )
 		.join( '\n' );
 	const replyTo = Object.values( fields ).find( ( v ) => typeof v === 'string' && EMAIL_RE.test( v.trim() ) );
+	// The visitor's address is the sender's name, so the owner sees who wrote (the address itself is the site's).
 	const message = {
-		from: { email: env.MAIL_FROM, name: env.MAIL_SITE || 'Website' },
+		from: { email: env.MAIL_FROM, name: replyTo ? replyTo.trim() : env.MAIL_SITE || 'Website' },
 		to: env.MAIL_TO,
 		subject: 'New form message' + ( env.MAIL_SITE ? ' - ' + env.MAIL_SITE : '' ),
 		text: text + '\n\n' + ( page ? 'Page: ' + page : '' ),
@@ -137,9 +140,107 @@ async function notify( env, page, fields ) {
 	}
 
 	try {
-		await env.EMAIL.send( message );
+		if ( env.MAIL_SMTP_HOST && env.MAIL_SMTP_PASS ) {
+			await smtpSend( env, message );
+		} else {
+			await env.EMAIL.send( message );
+		}
 	} catch ( e ) {
 		console.log( 'mail failed', e.code, e.message );
+	}
+}
+
+const bytes = ( text ) => new TextEncoder().encode( text );
+
+function base64( data ) {
+	let binary = '';
+	for ( const b of typeof data === 'string' ? bytes( data ) : data ) {
+		binary += String.fromCharCode( b );
+	}
+
+	return btoa( binary );
+}
+
+// Header text: no line breaks or quotes (it ends up inside a quoted string), plain when ASCII, else an RFC 2047 word.
+const header = ( raw ) => {
+	const text = String( raw ).replace( /[\r\n"\\]/g, ' ' );
+
+	return /^[\x20-\x7e]*$/.test( text ) ? text : '=?UTF-8?B?' + base64( text ) + '?=';
+};
+
+// Minimal SMTP submission over implicit TLS (port 465): one message, AUTH PLAIN.
+// env.SMTP_CONNECT only exists for tests; the Worker uses its socket API.
+async function smtpSend( env, { from, to, replyTo, subject, text } ) {
+	const connect = env.SMTP_CONNECT || ( await import( 'cloudflare:sockets' ) ).connect;
+	const socket = connect( { hostname: env.MAIL_SMTP_HOST, port: 465 }, { secureTransport: 'on', allowHalfOpen: false } );
+	const writer = socket.writable.getWriter();
+	const reader = socket.readable.getReader();
+	const decoder = new TextDecoder();
+	let buffer = '';
+
+	// A reply ends at the first line with a space after the code ("250 ok"); "250-..." lines continue it.
+	const read = async () => {
+		for ( ;; ) {
+			const lines = buffer.split( '\r\n' );
+			const last = lines.findIndex( ( l, i ) => i < lines.length - 1 && /^\d{3} /.test( l ) );
+			if ( last >= 0 ) {
+				buffer = lines.slice( last + 1 ).join( '\r\n' );
+
+				return lines[ last ];
+			}
+			const { value, done } = await reader.read();
+			if ( done ) {
+				throw new Error( 'smtp: connection closed' );
+			}
+			buffer += decoder.decode( value, { stream: true } );
+		}
+	};
+	const step = async ( command, ok ) => {
+		if ( command !== null ) {
+			await writer.write( bytes( command + '\r\n' ) );
+		}
+		const line = await read();
+		if ( ! line.startsWith( ok ) ) {
+			// Never echo the command: it may carry the password.
+			throw new Error( 'smtp: ' + line.slice( 0, 120 ) );
+		}
+	};
+
+	const domain = from.email.split( '@' )[ 1 ];
+	const body = base64( text ).replace( /.{1,76}/g, '$&\r\n' );
+	const data = [
+		'From: "' + header( from.name ) + '" <' + from.email + '>',
+		'To: <' + to + '>',
+		replyTo ? 'Reply-To: <' + replyTo + '>' : null,
+		'Subject: ' + header( subject ),
+		'Date: ' + new Date().toUTCString(),
+		'Message-ID: <' + crypto.randomUUID() + '@' + domain + '>',
+		'MIME-Version: 1.0',
+		'Content-Type: text/plain; charset=UTF-8',
+		'Content-Transfer-Encoding: base64',
+	].filter( Boolean ).join( '\r\n' ) + '\r\n\r\n' + body;
+
+	let timeout;
+	const timer = new Promise( ( _, reject ) => {
+		timeout = setTimeout( () => reject( new Error( 'smtp: timeout' ) ), 20000 );
+	} );
+	const session = async () => {
+		await step( null, '220' );
+		await step( 'EHLO ' + domain, '250' );
+		await step( 'AUTH PLAIN ' + base64( '\0' + env.MAIL_FROM + '\0' + env.MAIL_SMTP_PASS ), '235' );
+		await step( 'MAIL FROM:<' + from.email + '>', '250' );
+		await step( 'RCPT TO:<' + to + '>', '25' );
+		await step( 'DATA', '354' );
+		// Base64 lines never start with ".", so no dot-stuffing is needed.
+		await step( data + '.', '250' );
+		await writer.write( bytes( 'QUIT\r\n' ) ).catch( () => {} );
+	};
+
+	try {
+		await Promise.race( [ session(), timer ] );
+	} finally {
+		clearTimeout( timeout );
+		socket.close().catch( () => {} );
 	}
 }
 

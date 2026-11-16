@@ -17,6 +17,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Before the site has its own domain this reports "needs_domain" and the Worker simply
  * keeps storing submissions in D1.
  *
+ * Domains whose mail lives elsewhere (their MX records point to another provider) cannot use
+ * Email Routing, so there is a second way: the owner's own mailbox over SMTP. The Worker logs
+ * in to it and sends the message from that address; no DNS record changes, no Cloudflare plan.
+ *
  * @link https://developers.cloudflare.com/email-service/get-started/route-emails/
  */
 class Cloudflare_Email {
@@ -28,6 +32,21 @@ class Cloudflare_Email {
 		$to = ! empty( $settings['notify_email'] ) ? $settings['notify_email'] : get_option( 'admin_email' );
 
 		return is_email( $to ) ? $to : '';
+	}
+
+	/**
+	 * @return array|null host, user, password of the mailbox that sends the messages; null when SMTP is not set up.
+	 */
+	public static function smtp( array $settings ) {
+		$user = isset( $settings['smtp_user'] ) ? trim( $settings['smtp_user'] ) : '';
+		$pass = isset( $settings['smtp_password'] ) ? (string) $settings['smtp_password'] : '';
+		$host = isset( $settings['smtp_host'] ) ? strtolower( trim( $settings['smtp_host'] ) ) : '';
+
+		if ( ! is_email( $user ) || '' === $pass || ! preg_match( '/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/', $host ) ) {
+			return null;
+		}
+
+		return array( 'host' => $host, 'user' => $user, 'password' => $pass );
 	}
 
 	/**
@@ -44,6 +63,13 @@ class Cloudflare_Email {
 		if ( empty( $settings['notify'] ) || ! $to ) {
 			return self::finish( 'off', '', '' );
 		}
+
+		$smtp = self::smtp( $settings );
+		if ( $smtp ) {
+			// Works on workers.dev too: nothing here depends on the domain being in the account.
+			return self::finish( 'smtp', $to, $smtp['user'], $smtp['host'], $smtp );
+		}
+
 		if ( empty( $settings['domain'] ) ) {
 			return self::finish( 'needs_domain', $to, '' );
 		}
@@ -75,18 +101,28 @@ class Cloudflare_Email {
 		return self::finish( $destination['verified'] ? 'ready' : 'pending_verification', $to, $from );
 	}
 
-	/** Saves the state and returns the bindings the Worker needs. */
-	protected static function finish( $state, $to, $from, $detail = '' ) {
+	/** Saves the state (never the password) and returns the bindings the Worker needs. */
+	protected static function finish( $state, $to, $from, $detail = '', $smtp = null ) {
 		update_option( self::OPTION, array( 'state' => $state, 'to' => $to, 'from' => $from, 'detail' => $detail ), false );
 
-		return self::bindings( $state, $to, $from );
+		return self::bindings( $state, $to, $from, $smtp );
 	}
 
 	/**
 	 * @return array Bindings; present from the moment the address is registered, so confirming it
 	 *               later works without another deploy.
 	 */
-	public static function bindings( $state, $to, $from ) {
+	public static function bindings( $state, $to, $from, $smtp = null ) {
+		if ( 'smtp' === $state && $smtp ) {
+			// MAIL_FROM is also the SMTP login: the mailbox only sends as itself.
+			return array(
+				array( 'name' => 'MAIL_SMTP_HOST', 'type' => 'plain_text', 'text' => $smtp['host'] ),
+				array( 'name' => 'MAIL_SMTP_PASS', 'type' => 'secret_text', 'text' => $smtp['password'] ),
+				array( 'name' => 'MAIL_TO', 'type' => 'plain_text', 'text' => $to ),
+				array( 'name' => 'MAIL_FROM', 'type' => 'plain_text', 'text' => $from ),
+				array( 'name' => 'MAIL_SITE', 'type' => 'plain_text', 'text' => wp_strip_all_tags( get_bloginfo( 'name' ) ) ),
+			);
+		}
 		if ( ! in_array( $state, array( 'ready', 'pending_verification' ), true ) ) {
 			return array();
 		}
