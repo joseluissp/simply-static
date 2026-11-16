@@ -427,10 +427,8 @@ class Cloudflare {
 			array( 'key' => 'd1', 'type' => 'edit' ),
 			array( 'key' => 'account_settings', 'type' => 'edit' ),
 			array( 'key' => 'zone', 'type' => 'read' ),
-			array( 'key' => 'turnstile', 'type' => 'edit' ),
-			// Form notifications by email. ponytail: key names follow Cloudflare's naming; the dashboard lists any it does not recognise.
-			array( 'key' => 'email_routing_addresses', 'type' => 'edit' ),
-			array( 'key' => 'email_routing_rules', 'type' => 'edit' ),
+			// Turnstile widgets are covered by Account Settings: Edit. Email Routing has no short key in the
+			// template URL (the dashboard refuses unknown ones): the settings screen asks to add them by hand.
 		);
 
 		return 'https://dash.cloudflare.com/?to=/:account/api-tokens&permissionGroupKeys=' . rawurlencode( wp_json_encode( $permissions ) ) . '&name=' . rawurlencode( 'Simply Static - ' . self::default_worker_name() );

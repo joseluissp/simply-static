@@ -85,6 +85,11 @@ final class CloudflareEdgeAndFormsTest extends UnitTestCase {
 		$keys = json_decode( rawurldecode( explode( '&', explode( 'permissionGroupKeys=', $url )[1] )[0] ), true );
 		self::assertContains( 'workers_scripts', array_column( $keys, 'key' ) );
 		self::assertContains( 'd1', array_column( $keys, 'key' ) );
+
+		// The dashboard refuses the whole template when a key is not one of its short keys (Cloudflare docs,
+		// "Permission reference"): "turnstile" and "email_routing_*" made it fail.
+		$known = array( 'account_analytics', 'account_api_tokens', 'account_settings', 'billing', 'workers_scripts', 'workers_kv_storage', 'workers_routes', 'workers_r2', 'd1', 'queues', 'page', 'stream', 'images', 'account_logs', 'dns', 'zone', 'zone_settings', 'analytics', 'firewall_services', 'page_rules', 'cache', 'ssl_and_certificates', 'logs' );
+		self::assertSame( array(), array_values( array_diff( array_column( $keys, 'key' ), $known ) ) );
 	}
 
 	public function test_default_worker_name_comes_from_the_host(): void {

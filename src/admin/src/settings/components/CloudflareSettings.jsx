@@ -240,6 +240,8 @@ export default function CloudflareSettings() {
                                 <Link href={data.token_url}>{__('Create a token in Cloudflare', 'simply-static')}</Link>
                                 {' · '}
                                 <Link href="https://dash.cloudflare.com/profile/api-tokens">{__('Manage tokens', 'simply-static')}</Link>
+                                <br/>
+                                {__('For form messages by email, also add these two permissions by hand in the token form: Account → Email Routing Addresses → Edit, and Zone → Email Routing Rules → Edit. Without them everything else works.', 'simply-static')}
                             </>
                         }
                     />
