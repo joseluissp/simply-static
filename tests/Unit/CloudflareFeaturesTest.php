@@ -114,6 +114,38 @@ namespace Simply_Static\Tests\Unit {
 			self::assertStringNotContainsString( 's3cret', (string) json_encode( get_option( Cloudflare_Email::OPTION ) ), 'the password is not kept in the status option' );
 		}
 
+		public function test_email_through_the_hostinger_api_binds_the_token_as_a_secret_and_wins_over_smtp(): void {
+			$client   = new FakeCloudflare( 'acc', 'tok', 'site' );
+			$settings = array( 'notify' => true, 'notify_email' => 'info@example.com', 'domain' => '', 'smtp_user' => 'info@example.com', 'mail_api_token' => 'apitoken', 'smtp_host' => 'smtp.example.com', 'smtp_password' => 'pw' );
+
+			$bindings = Cloudflare_Email::provision( $client, $settings );
+			$by_name  = array_column( $bindings, null, 'name' );
+
+			self::assertSame( array(), $client->calls, 'no Cloudflare calls: the domain keeps its own MX records' );
+			self::assertSame( 'secret_text', $by_name['MAIL_API_TOKEN']['type'] );
+			self::assertSame( 'apitoken', $by_name['MAIL_API_TOKEN']['text'] );
+			self::assertSame( 'info@example.com', $by_name['MAIL_FROM']['text'], 'the mailbox that sends' );
+			self::assertArrayNotHasKey( 'MAIL_SMTP_PASS', $by_name, 'the API takes precedence over SMTP' );
+			self::assertArrayNotHasKey( 'EMAIL', $by_name );
+			self::assertSame( 'api', Cloudflare_Email::status()['state'] );
+			self::assertStringNotContainsString( 'apitoken', (string) json_encode( get_option( Cloudflare_Email::OPTION ) ), 'the token is not kept in the status option' );
+
+			// Without the token the same mailbox falls back to SMTP.
+			unset( $settings['mail_api_token'] );
+			self::assertArrayHasKey( 'MAIL_SMTP_PASS', array_column( Cloudflare_Email::provision( $client, $settings ), null, 'name' ) );
+		}
+
+		public function test_the_mail_api_token_never_goes_back_to_the_browser_and_blank_keeps_it(): void {
+			$this->core();
+			update_option( Cloudflare::OPTION, array( 'smtp_user' => 'info@example.com', 'mail_api_token' => 'apitoken', 'token' => 'tok123' ) );
+
+			$payload = Cloudflare::payload();
+
+			self::assertStringNotContainsString( 'apitoken', (string) json_encode( $payload ) );
+			self::assertTrue( $payload['mail_api_token_set'] );
+			self::assertSame( 'apitoken', Cloudflare::settings()['mail_api_token'] );
+		}
+
 		public function test_email_falls_back_to_routing_when_the_mailbox_is_incomplete(): void {
 			$client = new FakeCloudflare( 'acc', 'tok', 'site' );
 			$base   = array( 'notify' => true, 'notify_email' => 'info@example.com', 'domain' => '', 'smtp_host' => 'smtp.hostinger.com' );

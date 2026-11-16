@@ -18,8 +18,11 @@ if ( ! defined( 'ABSPATH' ) ) {
  * keeps storing submissions in D1.
  *
  * Domains whose mail lives elsewhere (their MX records point to another provider) cannot use
- * Email Routing, so there is a second way: the owner's own mailbox over SMTP. The Worker logs
- * in to it and sends the message from that address; no DNS record changes, no Cloudflare plan.
+ * Email Routing, so there are two more ways, both from the owner's own mailbox with no DNS change
+ * and no Cloudflare plan:
+ *  - the Hostinger Mail API (HTTPS + token): the one that works with Hostinger, whose SMTP host sits
+ *    behind Cloudflare and so cannot be reached from a Worker;
+ *  - SMTP (the Worker logs in to the mailbox): for providers whose SMTP host is not on Cloudflare.
  *
  * @link https://developers.cloudflare.com/email-service/get-started/route-emails/
  */
@@ -32,6 +35,16 @@ class Cloudflare_Email {
 		$to = ! empty( $settings['notify_email'] ) ? $settings['notify_email'] : get_option( 'admin_email' );
 
 		return is_email( $to ) ? $to : '';
+	}
+
+	/**
+	 * @return array|null user (the mailbox) and token of the Hostinger Mail API; null when it is not set up.
+	 */
+	public static function hostinger( array $settings ) {
+		$user  = isset( $settings['smtp_user'] ) ? trim( $settings['smtp_user'] ) : '';
+		$token = isset( $settings['mail_api_token'] ) ? trim( (string) $settings['mail_api_token'] ) : '';
+
+		return is_email( $user ) && '' !== $token ? array( 'user' => $user, 'token' => $token ) : null;
 	}
 
 	/**
@@ -62,6 +75,12 @@ class Cloudflare_Email {
 
 		if ( empty( $settings['notify'] ) || ! $to ) {
 			return self::finish( 'off', '', '' );
+		}
+
+		// Plain HTTPS: works for mailboxes whose SMTP host Cloudflare Workers cannot reach.
+		$api = self::hostinger( $settings );
+		if ( $api ) {
+			return self::finish( 'api', $to, $api['user'], 'Hostinger', array( 'token' => $api['token'] ) );
 		}
 
 		$smtp = self::smtp( $settings );
@@ -113,6 +132,15 @@ class Cloudflare_Email {
 	 *               later works without another deploy.
 	 */
 	public static function bindings( $state, $to, $from, $smtp = null ) {
+		if ( 'api' === $state && $smtp ) {
+			// MAIL_FROM picks the mailbox among those the token can use.
+			return array(
+				array( 'name' => 'MAIL_API_TOKEN', 'type' => 'secret_text', 'text' => $smtp['token'] ),
+				array( 'name' => 'MAIL_TO', 'type' => 'plain_text', 'text' => $to ),
+				array( 'name' => 'MAIL_FROM', 'type' => 'plain_text', 'text' => $from ),
+				array( 'name' => 'MAIL_SITE', 'type' => 'plain_text', 'text' => wp_strip_all_tags( get_bloginfo( 'name' ) ) ),
+			);
+		}
 		if ( 'smtp' === $state && $smtp ) {
 			// MAIL_FROM is also the SMTP login: the mailbox only sends as itself.
 			return array(

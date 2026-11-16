@@ -277,3 +277,109 @@ test( 'smtp: header injection through the visitor address or the site name is no
 	assert.doesNotMatch( mail, /\r\nBcc:/ );
 	assert.match( mail, /\r\nSubject: New form message - Mi  sitio   Bcc: x@evil\.test\r\n/, 'line breaks and quotes become spaces' );
 } );
+
+// ---- Hostinger Agentic Mail API ----
+
+const HM = { MAIL_TO: 'info@example.com', MAIL_FROM: 'info@example.com', MAIL_SITE: 'Mi sitio', MAIL_API_TOKEN: 'tok-secret' };
+
+// Fake API: GET /me lists the mailbox, POST .../send answers 204 (or `sendStatus`); records every call.
+function withHostinger( { sendStatus = 204, mailboxes = [ { resourceId: 'AC1', address: 'Info@Example.com' } ] } = {} ) {
+	const calls = [];
+	const realFetch = globalThis.fetch;
+	globalThis.fetch = async ( url, init = {} ) => {
+		calls.push( { url, init } );
+		if ( url.endsWith( '/me' ) ) {
+			return new Response( JSON.stringify( { data: { mailboxes } } ) );
+		}
+
+		return new Response( sendStatus === 204 ? null : 'denied', { status: sendStatus } );
+	};
+
+	return { calls, restore: () => ( globalThis.fetch = realFetch ) };
+}
+
+test( 'hostinger api: sends from the mailbox over HTTPS, named after the visitor, with a mailto link', async () => {
+	const api = withHostinger();
+	try {
+		const c = mailCtx();
+		await worker.fetch( post( new URLSearchParams( { email: 'ana@mail.com', msg: '<b>hola</b>' } ) ), { DB: fakeDb(), ...HM }, c );
+		await Promise.all( c.pending );
+
+		assert.equal( api.calls.length, 2 );
+		assert.equal( api.calls[ 0 ].url, 'https://api.mail.hostinger.com/api/v1/me' );
+		assert.equal( api.calls[ 1 ].url, 'https://api.mail.hostinger.com/api/v1/mailboxes/AC1/send' );
+		assert.equal( api.calls[ 1 ].init.headers.authorization, 'Bearer tok-secret' );
+		const body = JSON.parse( api.calls[ 1 ].init.body );
+		assert.deepEqual( body.to, [ 'info@example.com' ] );
+		assert.equal( body.displayName, 'ana@mail.com' );
+		assert.equal( body.subject, 'New form message - Mi sitio' );
+		assert.match( body.text, /^Reply to: ana@mail\.com\n\nemail: ana@mail\.com/ );
+		assert.match( body.html, /href="mailto:ana@mail\.com"/ );
+		assert.match( body.html, /&#60;b&#62;hola&#60;\/b&#62;/, 'the visitor text is escaped in the html' );
+	} finally {
+		api.restore();
+	}
+} );
+
+test( 'hostinger api: a second submission reuses the mailbox id', async () => {
+	const api = withHostinger( { mailboxes: [ { resourceId: 'AC9', address: 'cache@example.com' } ] } );
+	try {
+		for ( let i = 0; i < 2; i++ ) {
+			const c = mailCtx();
+			await worker.fetch( post( new URLSearchParams( { msg: 'x' + i } ) ), { DB: fakeDb(), ...HM, MAIL_FROM: 'cache@example.com' }, c );
+			await Promise.all( c.pending );
+		}
+
+		assert.equal( api.calls.filter( ( x ) => x.url.endsWith( '/me' ) ).length, 1 );
+		assert.equal( api.calls.filter( ( x ) => x.url.endsWith( '/AC9/send' ) ).length, 2 );
+	} finally {
+		api.restore();
+	}
+} );
+
+test( 'hostinger api: a rejected token or a foreign mailbox is only logged, the submission is kept, the token never leaks', async () => {
+	const api = withHostinger( { sendStatus: 403 } );
+	const logs = [];
+	const realLog = console.log;
+	console.log = ( ...a ) => logs.push( a.join( ' ' ) );
+	try {
+		const c = mailCtx();
+		const DB = fakeDb();
+		const res = await worker.fetch( post( new URLSearchParams( { msg: 'hola' } ) ), { DB, ...HM, MAIL_FROM: 'info@example.com' }, c );
+		await Promise.all( c.pending );
+
+		assert.deepEqual( await res.json(), { ok: true } );
+		assert.equal( DB.rows.length, 1 );
+		assert.ok( logs.some( ( l ) => /mail failed/.test( l ) && /403/.test( l ) ), logs.join( '|' ) );
+		assert.ok( ! logs.join( '' ).includes( 'tok-secret' ) );
+
+		// Another sender address that the token does not own.
+		const other = mailCtx();
+		await worker.fetch( post( new URLSearchParams( { msg: 'hola' } ) ), { DB: fakeDb(), ...HM, MAIL_FROM: 'otra@example.com' }, other );
+		await Promise.all( other.pending );
+		assert.ok( logs.some( ( l ) => /is not in this token/.test( l ) ), logs.join( '|' ) );
+		assert.equal( api.calls.filter( ( x ) => x.url.endsWith( '/send' ) ).length, 1, 'nothing is sent for a mailbox the token does not own' );
+	} finally {
+		console.log = realLog;
+		api.restore();
+	}
+} );
+
+test( 'hostinger api: wins over SMTP and Email Routing; without recipient nothing is sent', async () => {
+	const api = withHostinger();
+	try {
+		const smtp = fakeSmtp();
+		const sent = [];
+		const c = mailCtx();
+		await worker.fetch( post( new URLSearchParams( { msg: 'x' } ) ), { DB: fakeDb(), ...HM, ...SMTP, EMAIL: { send: async ( m ) => sent.push( m ) }, SMTP_CONNECT: smtp.connect }, c );
+		const none = mailCtx();
+		await worker.fetch( post( new URLSearchParams( { msg: 'x' } ) ), { DB: fakeDb(), ...HM, MAIL_TO: undefined }, none );
+		await Promise.all( [ ...c.pending, ...none.pending ] );
+
+		assert.equal( smtp.calls.length, 0 );
+		assert.equal( sent.length, 0 );
+		assert.equal( api.calls.filter( ( x ) => x.url.endsWith( '/send' ) ).length, 1 );
+	} finally {
+		api.restore();
+	}
+} );

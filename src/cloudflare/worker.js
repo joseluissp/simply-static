@@ -7,7 +7,9 @@
 //   TURNSTILE_SECRET  secret for Cloudflare Turnstile verification
 //   WEBHOOK_URL       POSTed a JSON copy of every submission
 //   MAIL_TO, MAIL_FROM, MAIL_SITE   emails each submission to the owner, through one of:
-//     MAIL_SMTP_HOST + MAIL_SMTP_PASS   the owner's own mailbox over SMTP (port 465); MAIL_FROM is its login
+//     MAIL_API_TOKEN                    Hostinger Agentic Mail API (plain HTTPS); MAIL_FROM is the mailbox that sends
+//     MAIL_SMTP_HOST + MAIL_SMTP_PASS   the owner's own mailbox over SMTP (port 465); MAIL_FROM is its login.
+//                                       Not for hosts behind Cloudflare (smtp.hostinger.com): Workers cannot reach them.
 //     EMAIL                             Cloudflare Email Service (send_email binding)
 
 const MAX_BODY = 100 * 1024;
@@ -113,7 +115,7 @@ async function handleForm( request, env, ctx, url ) {
 		);
 	}
 
-	if ( ( env.EMAIL || ( env.MAIL_SMTP_HOST && env.MAIL_SMTP_PASS ) ) && env.MAIL_TO && env.MAIL_FROM ) {
+	if ( ( env.EMAIL || env.MAIL_API_TOKEN || ( env.MAIL_SMTP_HOST && env.MAIL_SMTP_PASS ) ) && env.MAIL_TO && env.MAIL_FROM ) {
 		ctx.waitUntil( notify( env, page, clean ) );
 	}
 
@@ -140,7 +142,9 @@ async function notify( env, page, fields ) {
 	}
 
 	try {
-		if ( env.MAIL_SMTP_HOST && env.MAIL_SMTP_PASS ) {
+		if ( env.MAIL_API_TOKEN ) {
+			await hostingerSend( env, message );
+		} else if ( env.MAIL_SMTP_HOST && env.MAIL_SMTP_PASS ) {
 			await smtpSend( env, message );
 		} else {
 			await env.EMAIL.send( message );
@@ -148,6 +152,48 @@ async function notify( env, page, fields ) {
 	} catch ( e ) {
 		console.log( 'mail failed', e.code, e.message );
 	}
+}
+
+const MAIL_API = 'https://api.mail.hostinger.com/api/v1/';
+const mailboxIds = {}; // address -> resource id, kept while the isolate lives
+
+const escapeHtml = ( s ) => String( s ).replace( /[&<>"']/g, ( c ) => '&#' + c.charCodeAt( 0 ) + ';' );
+
+// Hostinger Agentic Mail API: the message leaves from the mailbox itself, over HTTPS (SMTP sockets cannot
+// reach Hostinger from a Worker). The API has no Reply-To field, so the visitor's address is also the
+// sender's name (already in `from.name`) and a mailto link in the body.
+async function hostingerSend( env, { from, to, replyTo, subject, text } ) {
+	const headers = { authorization: 'Bearer ' + env.MAIL_API_TOKEN, 'content-type': 'application/json' };
+	const call = async ( path, init ) => {
+		const res = await fetch( MAIL_API + path, { headers, ...init } );
+		if ( ! res.ok ) {
+			throw new Error( 'hostinger: ' + path + ' ' + res.status + ' ' + ( await res.text() ).slice( 0, 200 ) );
+		}
+
+		return res;
+	};
+
+	let id = mailboxIds[ from.email ];
+	if ( ! id ) {
+		const mailbox = ( ( await ( await call( 'me' ) ).json() ).data?.mailboxes || [] ).find( ( m ) => m.address.toLowerCase() === from.email.toLowerCase() );
+		if ( ! mailbox ) {
+			throw new Error( 'hostinger: mailbox ' + from.email + ' is not in this token' );
+		}
+		id = mailboxIds[ from.email ] = mailbox.resourceId;
+	}
+
+	const answer = replyTo ? 'Reply to: ' + replyTo + '\n\n' : '';
+	const link = replyTo ? '<p>Reply to: <a href="mailto:' + escapeHtml( replyTo ) + '">' + escapeHtml( replyTo ) + '</a></p>' : '';
+	await call( 'mailboxes/' + id + '/send', {
+		method: 'POST',
+		body: JSON.stringify( {
+			to: [ to ],
+			subject: String( subject ).replace( /[\r\n]+/g, ' ' ),
+			displayName: String( from.name ).replace( /[\r\n"\\]/g, ' ' ),
+			text: answer + text,
+			html: link + '<pre style="font-family:inherit;white-space:pre-wrap">' + escapeHtml( text ) + '</pre>',
+		} ),
+	} );
 }
 
 const bytes = ( text ) => new TextEncoder().encode( text );

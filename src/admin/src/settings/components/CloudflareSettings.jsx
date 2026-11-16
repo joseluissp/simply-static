@@ -164,6 +164,7 @@ export default function CloudflareSettings() {
     const [form, setForm] = useState({});
     const [token, setToken] = useState('');
     const [smtpPassword, setSmtpPassword] = useState('');
+    const [mailApiToken, setMailApiToken] = useState('');
     const [saving, setSaving] = useState(false);
     const [result, setResult] = useState(null);
     const [submissions, setSubmissions] = useState([]);
@@ -189,11 +190,12 @@ export default function CloudflareSettings() {
     const save = () => {
         setSaving(true);
         setResult(null);
-        apiFetch({path: PATH, method: 'POST', data: {...form, token, smtp_password: smtpPassword}})
+        apiFetch({path: PATH, method: 'POST', data: {...form, token, smtp_password: smtpPassword, mail_api_token: mailApiToken}})
             .then((payload) => {
                 apply(payload);
                 setToken('');
                 setSmtpPassword('');
+                setMailApiToken('');
                 setResult({error: payload.error, notes: payload.notes});
             })
             .catch((e) => setResult({error: e?.message || __('Something went wrong.', 'simply-static'), notes: []}))
@@ -316,32 +318,47 @@ export default function CloudflareSettings() {
                                 <details>
                                     <summary>{hinted(__('Send them through my own mailbox', 'simply-static'), __('use it when your domain’s email is at another provider (Hostinger, Google…)', 'simply-static'))}</summary>
                                     <p className="description">
-                                        {__('Use this when the domain already has its email somewhere else (Hostinger, Google…): the message is sent from that mailbox and nothing in your DNS changes. Create a mailbox just for this, for example avisos@yourdomain.', 'simply-static')}
+                                        {__('Use this when the domain already has its email somewhere else: the message is sent from that mailbox and nothing in your DNS changes. With Hostinger use its Mail API token; for other providers, their SMTP server.', 'simply-static')}
                                     </p>
                                     <TextControl
                                         type="email"
-                                        label={hinted(__('Mailbox (sender and login)', 'simply-static'), __('the email account that sends the message', 'simply-static'))}
+                                        label={hinted(__('Mailbox (sender)', 'simply-static'), __('the email account that sends the message', 'simply-static'))}
                                         value={form.smtp_user || ''}
                                         onChange={set('smtp_user')}
                                     />
                                     <TextControl
                                         type="password"
-                                        label={hinted(__('Mailbox password', 'simply-static'), __('of that account', 'simply-static'))}
-                                        value={smtpPassword}
-                                        disabled={locked('smtp_password')}
-                                        placeholder={data.smtp_password_set ? '••••••••••••' : ''}
-                                        onChange={setSmtpPassword}
+                                        label={hinted(__('Hostinger Mail API token', 'simply-static'), __('hPanel → Emails → your domain → Agentic mail → API access', 'simply-static'))}
+                                        value={mailApiToken}
+                                        disabled={locked('mail_api_token')}
+                                        placeholder={data.mail_api_token_set ? '••••••••••••' : ''}
+                                        onChange={setMailApiToken}
                                         autoComplete="new-password"
-                                        help={data.smtp_password_set
-                                            ? __('A password is stored. Leave blank to keep it. It is kept in this site’s database and sent to your Worker as a secret; or define SIMPLY_STATIC_CF_SMTP_PASSWORD in wp-config.php.', 'simply-static')
-                                            : __('Kept in this site’s database and sent to your Worker as a secret; or define SIMPLY_STATIC_CF_SMTP_PASSWORD in wp-config.php.', 'simply-static')}
+                                        help={data.mail_api_token_set
+                                            ? __('A token is stored. Leave blank to keep it. It is kept in this site’s database and sent to your Worker as a secret; or define SIMPLY_STATIC_CF_MAIL_API_TOKEN in wp-config.php.', 'simply-static')
+                                            : __('Create it limited to this mailbox. Kept in this site’s database and sent to your Worker as a secret; or define SIMPLY_STATIC_CF_MAIL_API_TOKEN in wp-config.php. The API has no Reply-To: the visitor’s address is the sender’s name and a link in the message.', 'simply-static')}
                                     />
-                                    <TextControl
-                                        label={hinted(__('Outgoing mail server (SMTP, SSL port 465)', 'simply-static'), __('your email provider’s SMTP server', 'simply-static'))}
-                                        value={form.smtp_host || ''}
-                                        onChange={set('smtp_host')}
-                                        help={__('smtp.hostinger.com for Hostinger.', 'simply-static')}
-                                    />
+                                    <details>
+                                        <summary>{hinted(__('Other providers: SMTP', 'simply-static'), __('only if the SMTP server is not behind Cloudflare', 'simply-static'))}</summary>
+                                        <TextControl
+                                            type="password"
+                                            label={hinted(__('Mailbox password', 'simply-static'), __('of that account', 'simply-static'))}
+                                            value={smtpPassword}
+                                            disabled={locked('smtp_password')}
+                                            placeholder={data.smtp_password_set ? '••••••••••••' : ''}
+                                            onChange={setSmtpPassword}
+                                            autoComplete="new-password"
+                                            help={data.smtp_password_set
+                                                ? __('A password is stored. Leave blank to keep it. It is kept in this site’s database and sent to your Worker as a secret; or define SIMPLY_STATIC_CF_SMTP_PASSWORD in wp-config.php.', 'simply-static')
+                                                : __('Kept in this site’s database and sent to your Worker as a secret; or define SIMPLY_STATIC_CF_SMTP_PASSWORD in wp-config.php.', 'simply-static')}
+                                        />
+                                        <TextControl
+                                            label={hinted(__('Outgoing mail server (SMTP, SSL port 465)', 'simply-static'), __('your email provider’s SMTP server', 'simply-static'))}
+                                            value={form.smtp_host || ''}
+                                            onChange={set('smtp_host')}
+                                            help={__('Not smtp.hostinger.com: Cloudflare Workers cannot connect to servers that sit behind Cloudflare (Hostinger does); use the Mail API token above.', 'simply-static')}
+                                        />
+                                    </details>
                                 </details>
                             }
                             <TextControl
