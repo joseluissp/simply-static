@@ -20,6 +20,14 @@ const {__} = wp.i18n;
 
 const PATH = '/simplystatic/v1/cloudflare';
 
+// Title with a short, muted explanation right next to it.
+const hinted = (title, hint) => (
+    <>
+        {title}
+        <span style={{fontWeight: 400, color: '#757575', textTransform: 'none'}}> — {hint}</span>
+    </>
+);
+
 // Plain anchor: ExternalLink is a flex item and breaks inline text.
 const Link = ({href, children}) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
 
@@ -112,7 +120,7 @@ function Pages({excluded, onChange}) {
 
     return (
         <details onToggle={(e) => e.target.open && load()}>
-            <summary>{__('Pages to publish', 'simply-static')}{excluded.length > 0 && ` (${excluded.length} ${__('left out', 'simply-static')})`}</summary>
+            <summary>{hinted(__('Pages to publish', 'simply-static'), __('untick the pages you do not want online', 'simply-static'))}{excluded.length > 0 && ` (${excluded.length} ${__('left out', 'simply-static')})`}</summary>
             <Spacer margin={3}/>
             <p className="description">
                 {__('Untick the pages you do not want on the static site. The home page is always published. Links to unticked pages stay where they are and lead to a 404. New content is published unless you untick it here.', 'simply-static')}
@@ -227,7 +235,7 @@ export default function CloudflareSettings() {
 
                     <TextControl
                         type="password"
-                        label={__('API token', 'simply-static')}
+                        label={hinted(__('API token', 'simply-static'), __('lets the plugin publish to your Cloudflare account', 'simply-static'))}
                         value={token}
                         autoComplete="off"
                         disabled={locked('token')}
@@ -243,12 +251,12 @@ export default function CloudflareSettings() {
                                 {' · '}
                                 <Link href="https://dash.cloudflare.com/profile/api-tokens">{__('Manage tokens', 'simply-static')}</Link>
                                 <br/>
-                                {__('For form messages by email, also add these two permissions by hand in the token form: Account → Email Routing Addresses → Edit, and Zone → Email Routing Rules → Edit. Without them everything else works.', 'simply-static')}
+                                {__('Only if form emails go through Cloudflare (not your own mailbox): also add by hand Account → Email Routing Addresses → Edit and Zone → Email Routing Rules → Edit.', 'simply-static')}
                             </>
                         }
                     />
                     <TextControl
-                        label={__('Final domain (optional)', 'simply-static')}
+                        label={hinted(__('Final domain (optional)', 'simply-static'), __('the real address of the site', 'simply-static'))}
                         value={form.domain || ''}
                         placeholder="www.example.com"
                         onChange={set('domain')}
@@ -256,21 +264,21 @@ export default function CloudflareSettings() {
                     />
                     {!!form.domain &&
                         <ToggleControl
-                            label={__('Turn off the workers.dev address once the domain is live', 'simply-static')}
+                            label={hinted(__('Turn off the workers.dev address once the domain is live', 'simply-static'), __('no duplicate address', 'simply-static'))}
                             help={__('Avoids having the same site on two addresses.', 'simply-static')}
                             checked={!!form.disable_workers_dev}
                             onChange={set('disable_workers_dev')}
                         />
                     }
                     <ToggleControl
-                        label={__('Auto-publish', 'simply-static')}
+                        label={hinted(__('Auto-publish', 'simply-static'), __('publishes by itself after you edit content', 'simply-static'))}
                         help={__('Publish about a minute after content is published, updated or removed.', 'simply-static')}
                         checked={!!form.auto_publish}
                         onChange={set('auto_publish')}
                     />
                     {!!form.auto_publish &&
                         <SelectControl
-                            label={__('What auto-publish exports', 'simply-static')}
+                            label={hinted(__('What auto-publish exports', 'simply-static'), __('only what changed, or the whole site', 'simply-static'))}
                             value={form.autopublish_type || 'update'}
                             options={[
                                 {label: __('Changes only (fast)', 'simply-static'), value: 'update'},
@@ -281,7 +289,7 @@ export default function CloudflareSettings() {
                         />
                     }
                     <ToggleControl
-                        label={__('Forms', 'simply-static')}
+                        label={hinted(__('Forms', 'simply-static'), __('make contact forms work', 'simply-static'))}
                         help={__('Make WordPress forms work on the static site. Submissions are stored in Cloudflare D1 and protected by Turnstile.', 'simply-static')}
                         checked={!!form.forms}
                         onChange={set('forms')}
@@ -289,7 +297,7 @@ export default function CloudflareSettings() {
                     {!!form.forms &&
                         <>
                             <ToggleControl
-                                label={__('Email me every form message', 'simply-static')}
+                                label={hinted(__('Email me every form message', 'simply-static'), __('get an email for each submission', 'simply-static'))}
                                 help={data.email && data.email.note}
                                 checked={!!form.notify}
                                 onChange={set('notify')}
@@ -297,7 +305,7 @@ export default function CloudflareSettings() {
                             {!!form.notify &&
                                 <TextControl
                                     type="email"
-                                    label={__('Send messages to', 'simply-static')}
+                                    label={hinted(__('Send messages to', 'simply-static'), __('who receives that email', 'simply-static'))}
                                     value={form.notify_email || ''}
                                     placeholder={data.email && data.email.to ? data.email.to : ''}
                                     onChange={set('notify_email')}
@@ -306,19 +314,19 @@ export default function CloudflareSettings() {
                             }
                             {!!form.notify &&
                                 <details>
-                                    <summary>{__('Send them through my own mailbox (when the domain’s mail is at another provider)', 'simply-static')}</summary>
+                                    <summary>{hinted(__('Send them through my own mailbox', 'simply-static'), __('use it when your domain’s email is at another provider (Hostinger, Google…)', 'simply-static'))}</summary>
                                     <p className="description">
                                         {__('Use this when the domain already has its email somewhere else (Hostinger, Google…): the message is sent from that mailbox and nothing in your DNS changes. Create a mailbox just for this, for example avisos@yourdomain.', 'simply-static')}
                                     </p>
                                     <TextControl
                                         type="email"
-                                        label={__('Mailbox (sender and login)', 'simply-static')}
+                                        label={hinted(__('Mailbox (sender and login)', 'simply-static'), __('the email account that sends the message', 'simply-static'))}
                                         value={form.smtp_user || ''}
                                         onChange={set('smtp_user')}
                                     />
                                     <TextControl
                                         type="password"
-                                        label={__('Mailbox password', 'simply-static')}
+                                        label={hinted(__('Mailbox password', 'simply-static'), __('of that account', 'simply-static'))}
                                         value={smtpPassword}
                                         disabled={locked('smtp_password')}
                                         placeholder={data.smtp_password_set ? '••••••••••••' : ''}
@@ -329,7 +337,7 @@ export default function CloudflareSettings() {
                                             : __('Kept in this site’s database and sent to your Worker as a secret; or define SIMPLY_STATIC_CF_SMTP_PASSWORD in wp-config.php.', 'simply-static')}
                                     />
                                     <TextControl
-                                        label={__('Outgoing mail server (SMTP, SSL port 465)', 'simply-static')}
+                                        label={hinted(__('Outgoing mail server (SMTP, SSL port 465)', 'simply-static'), __('your email provider’s SMTP server', 'simply-static'))}
                                         value={form.smtp_host || ''}
                                         onChange={set('smtp_host')}
                                         help={__('smtp.hostinger.com for Hostinger.', 'simply-static')}
@@ -338,7 +346,7 @@ export default function CloudflareSettings() {
                             }
                             <TextControl
                                 type="url"
-                                label={__('Forms webhook (optional)', 'simply-static')}
+                                label={hinted(__('Forms webhook (optional)', 'simply-static'), __('also copy each submission to Zapier, Make, n8n…', 'simply-static'))}
                                 value={form.webhook_url || ''}
                                 onChange={set('webhook_url')}
                                 help={__('Every submission is also sent here as JSON (Zapier, Make, n8n…).', 'simply-static')}
@@ -346,13 +354,13 @@ export default function CloudflareSettings() {
                         </>
                     }
                     <ToggleControl
-                        label={__('Search', 'simply-static')}
+                        label={hinted(__('Search', 'simply-static'), __('a search page that works without a server', 'simply-static'))}
                         help={__('Adds a search page and points the theme’s search boxes to it. It works in the browser: no server needed.', 'simply-static')}
                         checked={!!form.search}
                         onChange={set('search')}
                     />
                     <ToggleControl
-                        label={__('Hide WordPress', 'simply-static')}
+                        label={hinted(__('Hide WordPress', 'simply-static'), __('hides that the site was built with WordPress', 'simply-static'))}
                         help={__('Renames wp-content and wp-includes in the published site and removes the generator, version and other WordPress markers. Fine-tune it in the Hide WP page.', 'simply-static')}
                         checked={!!form.hide_wp}
                         onChange={set('hide_wp')}
@@ -362,17 +370,17 @@ export default function CloudflareSettings() {
                     <Spacer margin={3}/>
 
                     <details>
-                        <summary>{__('Advanced', 'simply-static')}</summary>
+                        <summary>{hinted(__('Advanced', 'simply-static'), __('rarely needed', 'simply-static'))}</summary>
                         <Spacer margin={3}/>
                         <TextControl
-                            label={__('Account ID', 'simply-static')}
+                            label={hinted(__('Account ID', 'simply-static'), __('only if your token sees several accounts', 'simply-static'))}
                             value={form.account_id || ''}
                             disabled={locked('account_id')}
                             onChange={set('account_id')}
                             help={__('Detected from the token. Only needed if your token can see several accounts.', 'simply-static')}
                         />
                         <TextControl
-                            label={__('Worker name', 'simply-static')}
+                            label={hinted(__('Worker name', 'simply-static'), __('the name of the site inside Cloudflare', 'simply-static'))}
                             value={form.worker_name || ''}
                             disabled={locked('worker_name')}
                             placeholder={data.default_name}
@@ -380,27 +388,27 @@ export default function CloudflareSettings() {
                             help={__('Lowercase letters, numbers and dashes. Created on the first deploy.', 'simply-static')}
                         />
                         <TextareaControl
-                            label={__('Extra redirects', 'simply-static')}
+                            label={hinted(__('Extra redirects', 'simply-static'), __('send old addresses to new ones', 'simply-static'))}
                             value={form.extra_redirects || ''}
                             rows={4}
                             onChange={set('extra_redirects')}
                             help={__('One per line: /old /new 301. Redirects from the Redirection plugin are included automatically.', 'simply-static')}
                         />
                         <TextareaControl
-                            label={__('Extra headers', 'simply-static')}
+                            label={hinted(__('Extra headers', 'simply-static'), __('advanced: extra HTTP headers', 'simply-static'))}
                             value={form.extra_headers || ''}
                             rows={4}
                             onChange={set('extra_headers')}
                             help={__('Cloudflare _headers syntax. Security and cache headers are added automatically.', 'simply-static')}
                         />
                         <SelectControl
-                            label={__('Trailing slashes', 'simply-static')}
+                            label={hinted(__('Trailing slashes', 'simply-static'), __('how addresses end: /page or /page/', 'simply-static'))}
                             value={form.html_handling}
                             options={['auto-trailing-slash', 'force-trailing-slash', 'drop-trailing-slash', 'none'].map((v) => ({label: v, value: v}))}
                             onChange={set('html_handling')}
                         />
                         <SelectControl
-                            label={__('When a page is not found', 'simply-static')}
+                            label={hinted(__('When a page is not found', 'simply-static'), __('what visitors see on a missing address', 'simply-static'))}
                             value={form.not_found_handling}
                             options={['404-page', 'single-page-application', 'none'].map((v) => ({label: v, value: v}))}
                             onChange={set('not_found_handling')}
