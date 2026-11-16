@@ -321,6 +321,27 @@ test( 'hostinger api: sends from the mailbox over HTTPS, named after the visitor
 	}
 } );
 
+test( 'hostinger api: the email leaves out plugin fields ("_*") and empty ones, D1 keeps them all', async () => {
+	const api = withHostinger();
+	try {
+		const db = fakeDb();
+		const c = mailCtx();
+		await worker.fetch(
+			post( new URLSearchParams( { _wpcf7: '924', _wpcf7_posted_data_hash: '', 'your-email': 'ana@mail.com', note: '  ' } ) ),
+			{ DB: db, ...HM },
+			c
+		);
+		await Promise.all( c.pending );
+
+		const body = JSON.parse( api.calls[ api.calls.length - 1 ].init.body );
+		assert.equal( body.text, 'Reply to: ana@mail.com\n\nyour-email: ana@mail.com\n\n' );
+		assert.doesNotMatch( body.html, /_wpcf7|note/ );
+		assert.match( JSON.stringify( db.rows ), /_wpcf7/, 'the stored submission is untouched' );
+	} finally {
+		api.restore();
+	}
+} );
+
 test( 'hostinger api: a second submission reuses the mailbox id', async () => {
 	const api = withHostinger( { mailboxes: [ { resourceId: 'AC9', address: 'cache@example.com' } ] } );
 	try {

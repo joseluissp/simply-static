@@ -126,7 +126,9 @@ const EMAIL_RE = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
 
 // Mail is a courtesy: the submission is already stored, so failures are only logged.
 async function notify( env, page, fields ) {
+	// Names starting with "_" are plugin plumbing (Contact Form 7's _wpcf7*, _wp_http_referer...): stored in D1, not mailed.
 	const text = Object.entries( fields )
+		.filter( ( [ key, value ] ) => ! key.startsWith( '_' ) && String( value ).trim() !== '' )
 		.map( ( [ key, value ] ) => key + ': ' + ( Array.isArray( value ) ? value.join( ', ' ) : value ) )
 		.join( '\n' );
 	const replyTo = Object.values( fields ).find( ( v ) => typeof v === 'string' && EMAIL_RE.test( v.trim() ) );
