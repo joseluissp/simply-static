@@ -104,8 +104,15 @@ class Hide_WP {
 			$remove[] = '//style[@id="wp-emoji-styles-inline-css"]';
 		}
 		if ( $options->get( 'hide_comments' ) ) {
-			// Keep IE conditionals and our own markers.
-			$remove[] = '//comment()[not(starts-with(normalize-space(.),"[if")) and not(starts-with(normalize-space(.),"<![endif")) and not(starts-with(normalize-space(.),"ss-"))]';
+			// Keep IE conditionals and the markers the core uses to carry scripts and conditional comments
+			// through the DOM (<!-- SCRIPT_PLACEHOLDER_n -->): removing those would delete the scripts.
+			// COMMENT_PLACEHOLDER_n stands for an ordinary comment and does go, which is the point.
+			$keep = array( '[if', '<![endif', 'ss-', 'SCRIPT_PLACEHOLDER_', 'CONDITIONAL_COMMENT_PLACEHOLDER_' );
+			$test = array();
+			foreach ( $keep as $prefix ) {
+				$test[] = 'not(starts-with(normalize-space(.),"' . $prefix . '"))';
+			}
+			$remove[] = '//comment()[' . implode( ' and ', $test ) . ']';
 		}
 
 		foreach ( $remove as $query ) {

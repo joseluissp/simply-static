@@ -235,6 +235,24 @@ namespace Simply_Static\Tests\Unit {
 			self::assertStringContainsString( 'a{color:red}', $on, 'CSS is not escaped or lost' );
 		}
 
+		public function test_hiding_comments_keeps_the_markers_that_carry_scripts(): void {
+			Hide_WP::init();
+			update_option( Cloudflare::OPTION, array() );
+			$this->core( array_fill_keys( Hide_WP::TOGGLES, false ) );
+
+			// The core swaps every <script> for a comment while it works on the DOM and swaps it back afterwards.
+			$html = '<html><head><!-- SCRIPT_PLACEHOLDER_0 --><!-- COMMENT_PLACEHOLDER_0 --></head>'
+				. '<body><!-- CONDITIONAL_COMMENT_PLACEHOLDER_0 --><p>Hola</p><!-- SCRIPT_PLACEHOLDER_1 --><!-- a real comment --></body></html>';
+
+			$out = Hide_WP::clean_dom( $this->dom( $html ) )->saveHTML();
+
+			self::assertStringContainsString( 'SCRIPT_PLACEHOLDER_0', $out, 'a lost marker is a lost script' );
+			self::assertStringContainsString( 'SCRIPT_PLACEHOLDER_1', $out );
+			self::assertStringContainsString( 'CONDITIONAL_COMMENT_PLACEHOLDER_0', $out );
+			self::assertStringNotContainsString( 'COMMENT_PLACEHOLDER_0 -->', str_replace( 'CONDITIONAL_COMMENT_PLACEHOLDER_0', '', $out ), 'ordinary comments go' );
+			self::assertStringNotContainsString( 'a real comment', $out );
+		}
+
 		public function test_custom_replacements_are_applied(): void {
 			$this->core( array( 'custom_replacements' => array( array( 'search' => 'Acme', 'replace' => 'Foo' ), array( 'search' => '', 'replace' => 'x' ) ) ) );
 
